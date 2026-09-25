@@ -3,7 +3,8 @@
  * Mongolian strings for the public pages: the default language, and the
  * source of the key set every other language must match.
  *
- * `{name}` is the brand the payer is paying, `{amount}` is `₮49,000`. The
+ * `{name}` is the brand the payer is paying, `{amount}` is `₮49,000` (in
+ * `money.label`, the bare number `49,000`: the label names the unit). The
  * Mongolian text avoids case endings on `{name}` (-д/-т, руу/рүү depend on
  * the word), so sentences read correctly for any brand name.
  */
@@ -45,6 +46,7 @@ export const mn = {
 	'money.label': '{amount} төгрөг',
 
 	'error.notFound.title': 'Төлбөр олдсонгүй',
+	'error.pageNotFound.title': 'Хуудас олдсонгүй',
 	'error.notFound.body': 'Холбоосоо шалгах эсвэл буцаад дахин эхлүүлнэ үү.',
 	'error.generic.title': 'Алдаа гарлаа',
 	'error.generic.body': 'Хэсэг хүлээгээд дахин оролдоно уу.',

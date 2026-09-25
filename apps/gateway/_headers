@@ -1,2 +1,4 @@
+# Font file names carry the first 8 hex of their sha-256 (checked by
+# src/lib/fonts.test.ts), so a changed font gets a new URL.
 /fonts/*
   Cache-Control: public, max-age=31536000, immutable

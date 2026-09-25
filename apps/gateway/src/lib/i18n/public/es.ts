@@ -10,7 +10,7 @@ export const es: PublicMessages = {
 	'pay.showQr': 'Mostrar un código QR para escanear desde otro teléfono',
 	'pay.qrAlt': 'Código QR de este pago',
 	'pay.waiting': 'Esperando el pago',
-	'pay.expiresIn': 'Paga en los próximos {time}',
+	'pay.expiresIn': 'Tiempo restante: {time}',
 	'pay.checkNow': 'Ya pagué: comprobar',
 	'pay.checking': 'Comprobando…',
 	'pay.notYet': 'Aún no se ha recibido',
@@ -38,6 +38,7 @@ export const es: PublicMessages = {
 	'money.label': '{amount} tugriks',
 
 	'error.notFound.title': 'Pago no encontrado',
+	'error.pageNotFound.title': 'Página no encontrada',
 	'error.notFound.body': 'Revisa el enlace, o vuelve y empieza de nuevo.',
 	'error.generic.title': 'Algo salió mal',
 	'error.generic.body': 'Espera un momento y vuelve a intentarlo.',

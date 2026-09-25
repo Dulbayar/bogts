@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accentReport, brandVars, contrast, DEFAULT_ACCENT, normalizeHex, palette, SURFACES } from './brand';
+import { accentReport, brandVars, contrast, DEFAULT_ACCENT, isPlainEmail, mailtoHref, normalizeHex, palette, SURFACES } from './brand';
 
 describe('normalizeHex', () => {
 	it.each([
@@ -70,5 +70,20 @@ describe('accentReport', () => {
 	it('flags an adjusted colour', () => {
 		expect(accentReport('#ffd400').adjusted).toBe(true);
 		expect(accentReport('#0e7c7b').adjusted).toBe(false);
+	});
+});
+
+describe('support email', () => {
+	it('accepts plain addresses only', () => {
+		expect(isPlainEmail('help+pay@nomin.mn')).toBe(true);
+		for (const bad of ['help@nomin.mn?subject=x', 'help@nomin.mn&cc=a@b.mn', 'help me@nomin.mn', 'a%40b@nomin.mn', 'help@nomin', 'a@b@c.mn', '<a@b.mn>']) {
+			expect(isPlainEmail(bad), bad).toBe(false);
+		}
+	});
+	it('builds mailto only for a plain address', () => {
+		expect(mailtoHref('help@nomin.mn')).toBe('mailto:help@nomin.mn');
+		expect(mailtoHref('help+pay@nomin.mn')).toBe('mailto:help%2Bpay@nomin.mn');
+		expect(mailtoHref('help@nomin.mn?body=hi')).toBeNull();
+		expect(mailtoHref(null)).toBeNull();
 	});
 });

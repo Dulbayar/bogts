@@ -5,7 +5,9 @@
  *  3. Cloudflare's `request.cf.country` being `MN` (most Mongolian phones are
  *     set to English, so the country wins over Accept-Language);
  *  4. the best `Accept-Language` match;
- *  5. Mongolian.
+ *  5. English for a Traditional Chinese reader (zh-Hant, zh-TW, zh-HK,
+ *     zh-MO), who is likelier to read it than Mongolian;
+ *  6. Mongolian.
  */
 import { DEFAULT_LOCALE, isLocale, LOCALES, type Locale } from './index';
 
@@ -21,10 +23,25 @@ export function matchLocale(tag: string | null | undefined): Locale | null {
 	const [lang, ...rest] = t.split('-');
 	if (lang === 'zh') {
 		// Simplified Chinese: zh, zh-Hans*, zh-CN, zh-SG. Traditional (Hant, TW, HK, MO) is not offered.
-		if (rest.includes('hant') || rest.some((r) => ['tw', 'hk', 'mo'].includes(r))) return null;
+		if (isTraditionalChinese(t)) return null;
 		return 'zh-Hans';
 	}
 	return LOCALES.find((l) => l === lang) ?? null;
+}
+
+/** zh-Hant*, zh-TW, zh-HK, zh-MO (lower-cased tag). */
+function isTraditionalChinese(tag: string): boolean {
+	const [lang, ...rest] = tag.split('-');
+	return lang === 'zh' && (rest.includes('hant') || rest.some((r) => ['tw', 'hk', 'mo'].includes(r)));
+}
+
+/** Whether `Accept-Language` asks for Traditional Chinese at all (q > 0). */
+function wantsTraditionalChinese(header: string | null | undefined): boolean {
+	return (header ?? '').split(',').some((part) => {
+		const [tag = '', ...params] = part.trim().split(';');
+		const q = params.map((p) => p.trim()).find((p) => p.startsWith('q='));
+		return isTraditionalChinese(tag.trim().toLowerCase().replace(/_/g, '-')) && (!q || Number(q.slice(2)) > 0);
+	});
 }
 
 /** `Accept-Language` → our best match, honouring q-values (q=0 excludes). */
@@ -60,5 +77,6 @@ export function pickLocale(input: LocaleInput): { locale: Locale; fromQuery: boo
 	if (q) return { locale: q, fromQuery: true };
 	if (isLocale(input.cookie)) return { locale: input.cookie, fromQuery: false };
 	if (input.country?.toUpperCase() === 'MN') return { locale: 'mn', fromQuery: false };
-	return { locale: fromAcceptLanguage(input.acceptLanguage) ?? DEFAULT_LOCALE, fromQuery: false };
+	const fallback = wantsTraditionalChinese(input.acceptLanguage) ? 'en' : DEFAULT_LOCALE;
+	return { locale: fromAcceptLanguage(input.acceptLanguage) ?? fallback, fromQuery: false };
 }

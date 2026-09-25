@@ -10,7 +10,7 @@ export const fr: PublicMessages = {
 	'pay.showQr': 'Afficher un code QR à scanner depuis un autre téléphone',
 	'pay.qrAlt': 'Code QR de ce paiement',
 	'pay.waiting': 'En attente du paiement',
-	'pay.expiresIn': 'Payez dans les {time}',
+	'pay.expiresIn': 'Temps restant : {time}',
 	'pay.checkNow': 'J’ai payé : vérifier',
 	'pay.checking': 'Vérification…',
 	'pay.notYet': 'Pas encore reçu',
@@ -38,6 +38,7 @@ export const fr: PublicMessages = {
 	'money.label': '{amount} tugriks',
 
 	'error.notFound.title': 'Paiement introuvable',
+	'error.pageNotFound.title': 'Page introuvable',
 	'error.notFound.body': 'Vérifiez le lien, ou revenez en arrière et recommencez.',
 	'error.generic.title': 'Une erreur est survenue',
 	'error.generic.body': 'Patientez un instant et réessayez.',

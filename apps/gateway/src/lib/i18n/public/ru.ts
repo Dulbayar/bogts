@@ -35,9 +35,10 @@ export const ru: PublicMessages = {
 	'support.site': 'Сайт поддержки',
 	'footer.secured': 'Безопасная оплата',
 	'footer.invoice': 'Счёт {id}',
-	'money.label': '{amount} тугриков',
+	'money.label': 'Сумма в тугриках: {amount}',
 
 	'error.notFound.title': 'Платёж не найден',
+	'error.pageNotFound.title': 'Страница не найдена',
 	'error.notFound.body': 'Проверьте ссылку или вернитесь и начните заново.',
 	'error.generic.title': 'Что-то пошло не так',
 	'error.generic.body': 'Подождите немного и попробуйте ещё раз.',

@@ -388,3 +388,73 @@ Here `ctx` is the `ServiceContext` from `services/context.ts`.
   when known), and `paymentVendor` (shown only when it's `E_COMMERCE` or
   `QPAY`). Bonum's free-text `message` is never read. The code is in
   `providers/bonum/failure.ts`, and event payloads are unchanged.
+
+## As built (branding and i18n)
+
+**Tables** (migration `0007_branding`):
+
+| Table / column | Purpose |
+| --- | --- |
+| `branding` (one row, `id = 'default'`) | `company_name`, `logo_hash`, `accent_color` (`#rrggbb`), `support_email`, `support_url` (https only), `updated_at` |
+| `brand_logo` | Content-addressed logos: `hash` (sha-256 of the stored bytes, after SVG sanitising), `content_type` (`image/png`, `image/webp`, `image/svg+xml`), `data` (base64), `size`, `created_at` |
+| `project.display_name`, `project.logo_hash` | A project's own name and logo on its payment pages |
+
+The payee on a public page is the project's display name and logo, else the
+company's, else the project name. The support email must be a plain address
+(no `?`, `&`, `%` or spaces); the `mailto:` link is built only from one.
+
+**Logos** (`lib/server/branding.ts`): the type is sniffed from the bytes
+(never the upload's claim); 256 KB at most. Both save actions validate every
+field before `storeLogo`, then drop the replaced logo if unused and sweep
+`brand_logo` rows nothing references (older than 10 minutes, so a concurrent
+save's fresh upload survives).
+
+**`GET /brand/logo/[hash]`**: the stored bytes, `cache-control: public,
+max-age=31536000, immutable`, the hash as a strong ETag (304 on
+`If-None-Match`), `cross-origin-resource-policy: same-origin`, and
+`content-security-policy: default-src 'none'; style-src 'unsafe-inline';
+sandbox`. 404 (no-store) for an unknown or malformed hash.
+
+**SVG sanitiser** (`lib/server/svg.ts`): tokenise, then re-serialise only
+allowlisted content (single pass, safe by construction).
+
+- Skipped: XML declaration, processing instructions, DOCTYPE (with its
+  internal subset; entities are never expanded), comments, CDATA outside
+  `<style>`.
+- Elements: `svg g path circle ellipse rect line polyline polygon text tspan
+  defs linearGradient radialGradient stop clipPath mask use title desc`.
+  `<a>` and `<switch>` are unwrapped; anything else is dropped with its
+  content. `<use>` without a `#id` href is dropped.
+- Refused (400, "This SVG embeds images or scripts; export it as plain vector
+  or upload a PNG"): `script`, `image`, `feImage`, `iframe`, `embed`,
+  `object`, `video`, `audio`, `canvas`, `handler`, `listener`, anywhere. A
+  document with nothing drawable left is refused too.
+- Attributes: presentation (`fill`, `stroke`, `stroke-*`, `opacity`,
+  `fill-opacity`, `fill-rule`, `clip-rule`, `clip-path`/`mask` as `url(#id)`
+  or `none`, `stop-color`, `stop-opacity`, font and text-anchor properties)
+  and geometry (`d`, `points`, `x`…`y2`, `cx`, `cy`, `r`, `rx`, `ry`, `width`,
+  `height`, `viewBox`, `transform`, `offset`, gradient attributes,
+  `preserveAspectRatio`, `version`), plus `id` and `class`. `href`/`src` under
+  any prefix only as a same-document `#id` (written as `href`). The root gets
+  the canonical `xmlns` (and `xmlns:xlink` if it had one).
+- Values: numeric and the five XML entities are decoded first; a value
+  survives only in a small character set (no `:`, `\`, `;`, `@`, `*`, `<`,
+  `&`) with known functions only (`url` to a `#id`, colour and transform
+  functions).
+- `<style>`: simple class rules (`.a, .b { … }`) and the `style` attribute
+  become presentation attributes (attribute < class rule in source order <
+  inline style); quoted `url('#g')` / `url("#g")` are kept. At-rules and
+  other selectors are ignored, and the element is dropped.
+
+**Language** (`lib/i18n/public`): `/pay`, `/return` and the public error
+pages speak `mn` (default), `en`, `fr`, `ru`, `zh-Hans`, `es`; the dashboard is
+English. Order: `?lang=`, the `bogts_lang` cookie, `request.cf.country` = `MN`,
+the best `Accept-Language` match, English for a Traditional Chinese reader
+(`zh-Hant`, `zh-TW`, `zh-HK`, `zh-MO`), then Mongolian. A `?lang=` choice sets
+`bogts_lang` (Path=/, one year, HttpOnly, SameSite=Lax, Secure on https) only
+on HTML responses of the public area, never on `/brand/logo`, assets, JSON,
+`/v1` or `/hooks`. `<html lang>` follows the locale. A 404 under `/pay/` or
+`/return/` says "payment not found"; any other URL, "page not found".
+
+**Fonts**: `static/fonts/<name>.<first 8 hex of sha-256>.woff2`, cached for a
+year as immutable (`_headers`); `src/lib/fonts.test.ts` checks the names.

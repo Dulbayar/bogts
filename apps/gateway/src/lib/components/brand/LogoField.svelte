@@ -54,7 +54,7 @@
 				</label>
 			{/if}
 		</div>
-		<span class="hint">PNG, SVG or WebP, up to 256 KB. Square works best.</span>
+		<span class="hint">PNG, SVG or WebP, up to 256 KB.</span>
 		{#if problem}<span class="error" role="alert">{problem}</span>{/if}
 	</div>
 </div>
@@ -69,8 +69,11 @@
 	.frame {
 		display: grid;
 		place-items: center;
-		width: 76px;
+		min-width: 76px;
+		max-width: 100%;
 		height: 76px;
+		padding-inline: 10px;
+		overflow: hidden;
 		flex: none;
 		border-radius: var(--radius-lg);
 		border: 1px solid var(--border);

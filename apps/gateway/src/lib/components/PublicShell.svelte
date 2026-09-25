@@ -10,6 +10,7 @@
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { mailtoHref } from '$lib/brand';
 	import type { Locale, Translate } from '$lib/i18n/public';
 	import BogtsMark from './brand/BogtsMark.svelte';
 	import BrandLogo from './brand/BrandLogo.svelte';
@@ -37,7 +38,8 @@
 		note?: Snippet;
 	} = $props();
 
-	const hasSupport = $derived(!!(payee?.supportEmail || payee?.supportUrl));
+	const mailto = $derived(mailtoHref(payee?.supportEmail));
+	const hasSupport = $derived(!!(mailto || payee?.supportUrl));
 </script>
 
 <div class="public" class:split={!!action && !!summary}>
@@ -67,7 +69,7 @@
 			{#if hasSupport && payee}
 				<p class="support">
 					<span class="subtle">{t('support.label')}:</span>
-					{#if payee.supportEmail}<a href="mailto:{payee.supportEmail}"><Icon name="mail" size={14} /> {payee.supportEmail}</a>{/if}
+					{#if mailto}<a href={mailto}><Icon name="mail" size={14} /> {payee.supportEmail}</a>{/if}
 					{#if payee.supportUrl}<a href={payee.supportUrl} rel="external noreferrer noopener" target="_blank"
 							><Icon name="help" size={14} /> {t('support.site')}</a
 						>{/if}
