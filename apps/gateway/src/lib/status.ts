@@ -5,7 +5,8 @@
 import { t, type MessageKey } from './i18n/en';
 
 export type Tone = 'success' | 'pending' | 'info' | 'warning' | 'danger' | 'muted';
-export type StatusView = { tone: Tone; label: string };
+/** `glyph` overrides the tone's icon where the meaning differs (an environment is not a failure). */
+export type StatusView = { tone: Tone; label: string; glyph?: 'live' | 'flask' };
 
 const view = (tone: Tone, key: MessageKey): StatusView => ({ tone, label: t(key) });
 
@@ -104,8 +105,9 @@ export function providerStatus(state: ProviderState): StatusView {
 	return view('muted', 'status.provider.off');
 }
 
+/** Production is the good, live state (a solid dot); sandbox is a test bench (a flask), in amber. */
 export function environmentStatus(env: 'test' | 'production'): StatusView {
-	return env === 'test' ? view('warning', 'status.env.test') : view('muted', 'status.env.production');
+	return env === 'test' ? { ...view('warning', 'status.env.test'), glyph: 'flask' } : { ...view('success', 'status.env.production'), glyph: 'live' };
 }
 
 /** Event type tint (ux-brief §4): by the part after the dot. */
