@@ -161,10 +161,17 @@ export const invoice = sqliteTable(
 		updatedAt: integer('updated_at').notNull()
 	},
 	(t) => [
-		index('invoice_project_created_idx').on(t.projectId, t.createdAt),
-		index('invoice_project_reference_idx').on(t.projectId, t.reference),
+		// Lists and `GET /v1/invoices` (a project's invoices, newest id first).
+		index('invoice_project_id_idx').on(t.projectId, t.id),
+		// A reference, in one project (purchases, `?reference=`, newest id first) or all (search).
+		index('invoice_reference_idx').on(t.reference, t.projectId, t.id),
+		// Overview KPIs: invoices created in a period.
+		index('invoice_created_idx').on(t.createdAt),
 		// The sweep: pending invoices past expiresAt, not yet swept.
 		index('invoice_sweep_idx').on(t.status, t.expiresAt).where(sql`${t.sweptAt} is null`),
+		// The sweep's stale claims: swept but still pending. Partial (like the one above) so the
+		// planner never prefers it for a plain `status = ?` without statistics.
+		index('invoice_sweep_claimed_idx').on(t.status, t.sweptAt).where(sql`${t.sweptAt} is not null`),
 		// The late check: expired invoices not yet late-checked.
 		index('invoice_late_check_idx').on(t.status, t.expiresAt).where(sql`${t.lateCheckedAt} is null`),
 		uniqueIndex('invoice_provider_invoice_uq').on(t.provider, t.providerInvoiceId),
@@ -236,8 +243,14 @@ export const subscription = sqliteTable(
 		updatedAt: integer('updated_at').notNull()
 	},
 	(t) => [
-		index('subscription_project_customer_idx').on(t.projectId, t.customerRef),
-		index('subscription_project_created_idx').on(t.projectId, t.createdAt),
+		// A customer's mandates, in one project or all (search).
+		index('subscription_customer_idx').on(t.customerRef, t.projectId, t.planId),
+		// Lists and `GET /v1/subscriptions`.
+		index('subscription_project_id_idx').on(t.projectId, t.id),
+		// Renewal reconciliation (live mandates past their billing date) and the status counts.
+		index('subscription_status_bill_idx').on(t.status, t.nextBillAt),
+		// Subscriptions per plan (plans tab, removing a plan).
+		index('subscription_plan_idx').on(t.planId),
 		index('subscription_card_idx').on(t.cardId)
 	]
 );
@@ -266,8 +279,12 @@ export const charge = sqliteTable(
 		updatedAt: integer('updated_at').notNull()
 	},
 	(t) => [
-		index('charge_project_created_idx').on(t.projectId, t.createdAt),
-		index('charge_project_reference_idx').on(t.projectId, t.reference),
+		// Lists and `GET /v1/charges`.
+		index('charge_project_id_idx').on(t.projectId, t.id),
+		// A reference, in one project or all (search).
+		index('charge_reference_idx').on(t.reference, t.projectId),
+		// Charges stuck pending, and the overview's finished charges in a period.
+		index('charge_status_created_idx').on(t.status, t.createdAt),
 		index('charge_card_idx').on(t.cardId),
 		index('charge_subscription_idx').on(t.subscriptionId)
 	]
@@ -311,7 +328,8 @@ export const ledger = sqliteTable(
 	(t) => [
 		uniqueIndex('ledger_provider_ref_uq').on(t.provider, t.providerRef),
 		uniqueIndex('ledger_subject_period_uq').on(t.subjectId, t.periodKey),
-		index('ledger_project_created_idx').on(t.projectId, t.createdAt),
+		// Volume in a period (overview, usage), for one project or all.
+		index('ledger_created_idx').on(t.createdAt, t.projectId),
 		index('ledger_subject_idx').on(t.subjectId)
 	]
 );
@@ -354,8 +372,11 @@ export const event = sqliteTable(
 		createdAt: integer('created_at').notNull()
 	},
 	(t) => [
+		// The feed and the events list (a project's events by id).
 		index('event_project_id_idx').on(t.projectId, t.id),
-		index('event_subject_idx').on(t.subjectId)
+		index('event_subject_idx').on(t.subjectId),
+		// Events in a month (usage), counted from the index alone.
+		index('event_created_idx').on(t.createdAt, t.projectId)
 	]
 );
 
@@ -386,9 +407,14 @@ export const delivery = sqliteTable(
 		updatedAt: integer('updated_at').notNull()
 	},
 	(t) => [
+		// The cron: pending deliveries due now.
 		index('delivery_due_idx').on(t.status, t.nextAttemptAt),
-		index('delivery_event_idx').on(t.eventId),
-		index('delivery_project_created_idx').on(t.projectId, t.createdAt)
+		// Fresh deliveries (after each request), failing ones and delivery health in a recent window.
+		index('delivery_status_created_idx').on(t.status, t.createdAt),
+		// An event's deliveries, newest id first: "the latest delivery" is one probe.
+		index('delivery_event_id_idx').on(t.eventId, t.id),
+		// A project's recent deliveries (webhook tab).
+		index('delivery_project_id_idx').on(t.projectId, t.id)
 	]
 );
 
@@ -431,11 +457,8 @@ export const deliveryAttempt = sqliteTable(
 		durationMs: integer('duration_ms').notNull(),
 		createdAt: integer('created_at').notNull()
 	},
-	(t) => [
-		index('delivery_attempt_delivery_idx').on(t.deliveryId, t.number),
-		index('delivery_attempt_event_idx').on(t.eventId),
-		index('delivery_attempt_project_created_idx').on(t.projectId, t.createdAt)
-	]
+	// Written on every attempt and read only per event, so one index.
+	(t) => [index('delivery_attempt_event_idx').on(t.eventId, t.number)]
 );
 
 /* ------------------------------------------------------------------ *
@@ -476,7 +499,8 @@ export const auditLog = sqliteTable(
 		detail: text('detail', { mode: 'json' }).$type<Record<string, unknown>>(),
 		createdAt: integer('created_at').notNull()
 	},
-	(t) => [index('audit_log_created_idx').on(t.createdAt)]
+	// A subject's entries: timelines and plan validation status.
+	(t) => [index('audit_log_subject_idx').on(t.subject, t.createdAt)]
 );
 
 export const ACTIVITY_SUBJECT_TYPES = ['invoice', 'subscription', 'charge', 'provider'] as const;
@@ -508,7 +532,8 @@ export const activity = sqliteTable(
 	},
 	(t) => [
 		index('activity_subject_idx').on(t.subjectType, t.subjectId, t.createdAt),
-		index('activity_created_idx').on(t.createdAt)
+		// Overview "Needs attention": findings of given kinds in the last 30 days.
+		index('activity_kind_created_idx').on(t.kind, t.createdAt)
 	]
 );
 
