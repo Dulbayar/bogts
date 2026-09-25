@@ -7,7 +7,8 @@ file first.
 - pnpm workspace, Node ≥ 24, TypeScript 6, ESM.
 - `apps/gateway`: SvelteKit 2 + Svelte 5 (runes), `@sveltejs/adapter-cloudflare`,
   Drizzle ORM on D1, zod 4 for input validation, vitest 4 + better-sqlite3 for
-  tests (a real SQLite DB built from the migrations, never a mock DB).
+  tests (a real SQLite DB built from the migrations, never a mock DB, reached
+  through the production `drizzle-orm/d1` driver over a small D1 fake).
 - `packages/client`: `@gege-mn/bogts`, with no runtime dependencies; it
   works in Workers, Node and browsers (server side only: it carries an API key).
 - Versions: svelte ^5.56, kit ^2.63, adapter-cloudflare ^7.2,
@@ -75,7 +76,7 @@ Where the foundation refines or departs from the table above. Code against these
   `audit.ts` (`recordAudit`), `activity.ts` (`recordActivity`, the per-subject
   timeline), `gate.ts` (path areas + security headers), `locals.ts`
   (`requireConfig`, `requireAdmin`), `cron.ts` (`runCron`, heartbeats),
-  `testdb.ts` (test DB + fixtures).
+  `testdb.ts` (test DB behind the D1 driver + fixtures).
 - **`loadConfig`** throws `ConfigError` (variable names only) when: no
   `ENCRYPTION_KEY` or not 32 bytes; no admin auth; only one of the two Access
   vars; `ADMIN_PASSWORD` under 12 characters; a `*_ENVIRONMENT` other than
@@ -107,6 +108,28 @@ Where the foundation refines or departs from the table above. Code against these
   writing `cron_heartbeat` rows (`tick` + each job).
 - **API keys** rotate with a 24 h overlap (`rotateApiKey`): the previous key's
   hash stays valid until `previous_api_key_expires_at`.
+- **Every select inside `db.batch` must have unique column names.** D1's
+  `batch()` returns rows as objects keyed by column name, and drizzle-orm's D1
+  driver maps a batched row back by position over `Object.keys(row)`
+  (`d1ToRawMapping` in `drizzle-orm/d1/session.js`, 0.45). Two result columns
+  with the same name (`id`, `name`, `status`, `created_at` from joined tables)
+  collapse into one key and every later field shifts (the payment page once
+  showed the project's webhook URL as its name). Outside a batch Drizzle reads
+  arrays (`raw()`), so the same select is fine there. The pattern: a batched
+  select that joins tables or computes columns takes its fields through
+  `batchSelect({...})` (`db.ts`), which aliases every column to its path
+  (`invoice.id`, `project.name`) and keeps decoders (json, boolean). A
+  LEFT-joined group is then not nulled when nothing matched: read it through
+  `leftJoined(row.group, 'id')`, and type a left-joined flat field nullable by
+  hand. Also never let a result column be named like an integer (`select 1`
+  unaliased): JavaScript orders such keys first. Tests enforce this: the test
+  DB (`testdb.ts`) runs the real D1 driver over better-sqlite3 and throws on a
+  repeated or integer-like column name in any object result
+  (`db.$d1.strictColumns`), and `routes/admin/(app)/loads.test.ts` runs every
+  dashboard load against two differing projects.
+- **The test D1** also refuses `BEGIN`/`SAVEPOINT` (D1 has no SQL
+  transactions: use `db.batch`, never `db.transaction`), more than 100 bound
+  parameters per statement, and binding `undefined`.
 - **Idempotency:** a reused key with a different method/path/body → 422
   `idempotency_key_reused`; while the first request runs → 409
   `idempotency_in_progress` (a claim older than 60 s with no answer is taken

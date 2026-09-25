@@ -88,8 +88,10 @@ CI runs both, builds the client and the gateway, and checks that the gateway
 still deploys on its own (see below).
 
 - Gateway tests run against **a real SQLite database built from the
-  migrations** (better-sqlite3), never a mocked one. See
-  `apps/gateway/src/lib/server/testdb.ts`.
+  migrations** (better-sqlite3), never a mocked one, through the production
+  `drizzle-orm/d1` driver over a small D1 fake, so results have D1's shapes.
+  See `apps/gateway/src/lib/server/testdb.ts`, and the `db.batch` column-name
+  rule in `docs/contracts.md` ("As built").
 - Providers are faked with `vi.stubGlobal('fetch', …)`. Webhook fixtures are
   copied **exactly** from `docs/providers/*.md`, decimals included, because
   `10000.00` and `10000` sign differently.
