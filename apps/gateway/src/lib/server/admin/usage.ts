@@ -1,12 +1,12 @@
 /**
  * The Usage page: `monthlyUsage` (usage.ts) per project, split by kind, with
- * the events emitted in the same month. Months are Ulaanbaatar time, as in `monthlyUsage`.
+ * the events emitted in the same month (one `db.batch`). Months are Ulaanbaatar time, as in `monthlyUsage`.
  */
 import { and, count, gte, lt, sql } from 'drizzle-orm';
 import { monthOf } from '$lib/format';
 import type { DB } from '../db';
 import { event, ledger, project } from '../schema';
-import { monthBounds, monthlyUsage } from '../usage';
+import { monthBounds } from '../usage';
 import { scoped } from './common';
 
 export function monthFrom(url: URL, now = Date.now()): string {
@@ -28,12 +28,14 @@ export type UsageLine = {
 
 export async function usageTable(db: DB, input: { month: string; projectId: string | null }) {
 	const { start, end } = monthBounds(input.month);
-	const [base, kinds, events, projects] = await Promise.all([
-		monthlyUsage(db, { month: input.month, projectId: input.projectId ?? undefined }),
+	// One round trip. The ledger read is `monthlyUsage` split by kind; its totals are the sums over kinds.
+	const [byKind, events, projects] = await db.batch([
 		db
 			.select({
 				projectId: ledger.projectId,
 				kind: ledger.kind,
+				rows: count(),
+				volume: sql<number>`coalesce(sum(${ledger.amount}), 0)`,
 				n: sql<number>`sum(case when ${ledger.amount} > 0 then 1 else 0 end)`
 			})
 			.from(ledger)
@@ -46,10 +48,16 @@ export async function usageTable(db: DB, input: { month: string; projectId: stri
 			.groupBy(event.projectId),
 		db.select({ id: project.id, name: project.name }).from(project).orderBy(project.name)
 	]);
+	const base = new Map<string, { count: number; volume: number }>();
+	for (const r of byKind) {
+		const u = base.get(r.projectId) ?? { count: 0, volume: 0 };
+		base.set(r.projectId, { count: u.count + r.rows, volume: u.volume + Number(r.volume ?? 0) });
+	}
+	const kinds = byKind;
 	const lines: UsageLine[] = [];
 	for (const p of projects) {
 		if (input.projectId && p.id !== input.projectId) continue;
-		const u = base.find((b) => b.projectId === p.id);
+		const u = base.get(p.id);
 		const k = (kind: string) => Number(kinds.find((r) => r.projectId === p.id && r.kind === kind)?.n ?? 0);
 		const ev = events.find((e) => e.projectId === p.id)?.n ?? 0;
 		if (!u && ev === 0) continue;

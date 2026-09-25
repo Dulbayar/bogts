@@ -65,13 +65,15 @@ export function settingsProblem(env: Env, config: Config): boolean {
 export const CRON_STALE_MS = 5 * 60_000;
 
 export async function cronStatus(db: DB, now = Date.now()) {
-	const beats = await db.select().from(cronHeartbeat);
+	const [beats, [due]] = await db.batch([
+		db.select().from(cronHeartbeat),
+		db
+			.select({ n: count() })
+			.from(delivery)
+			.where(and(eq(delivery.status, 'pending'), lte(delivery.nextAttemptAt, now)))
+	]);
 	const byName = new Map(beats.map((b) => [b.name, b]));
 	const tick = byName.get('tick') ?? null;
-	const [due] = await db
-		.select({ n: count() })
-		.from(delivery)
-		.where(and(eq(delivery.status, 'pending'), lte(delivery.nextAttemptAt, now)));
 	return {
 		tick,
 		deliver: byName.get('deliver') ?? null,

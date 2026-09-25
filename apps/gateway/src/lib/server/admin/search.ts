@@ -11,22 +11,25 @@ import { isId } from './common';
 export async function findById(db: DB, raw: string): Promise<string | null> {
 	const id = raw.trim().toUpperCase();
 	if (!isId(id)) return null;
-	const probes: [string, () => Promise<unknown[]>][] = [
-		['/admin/payments/', () => db.select({ id: invoice.id }).from(invoice).where(eq(invoice.id, id)).limit(1)],
-		['/admin/subscriptions/', () => db.select({ id: subscription.id }).from(subscription).where(eq(subscription.id, id)).limit(1)],
-		['/admin/charges/', () => db.select({ id: charge.id }).from(charge).where(eq(charge.id, id)).limit(1)],
-		['/admin/events/', () => db.select({ id: event.id }).from(event).where(eq(event.id, id)).limit(1)],
-		['/admin/projects/', () => db.select({ id: project.id }).from(project).where(eq(project.id, id)).limit(1)]
-	];
-	for (const [prefix, probe] of probes) if ((await probe()).length) return prefix + id;
-	return null;
+	// Five primary-key probes in one round trip; the first hit, in this order, wins.
+	const prefixes = ['/admin/payments/', '/admin/subscriptions/', '/admin/charges/', '/admin/events/', '/admin/projects/'];
+	const hits = await db.batch([
+		db.select({ id: invoice.id }).from(invoice).where(eq(invoice.id, id)).limit(1),
+		db.select({ id: subscription.id }).from(subscription).where(eq(subscription.id, id)).limit(1),
+		db.select({ id: charge.id }).from(charge).where(eq(charge.id, id)).limit(1),
+		db.select({ id: event.id }).from(event).where(eq(event.id, id)).limit(1),
+		db.select({ id: project.id }).from(project).where(eq(project.id, id)).limit(1)
+	]);
+	const i = hits.findIndex((rows) => rows.length > 0);
+	return i < 0 ? null : prefixes[i]! + id;
 }
 
 /** Exact matches on `reference` (invoices, charges) and `customerRef` (subscriptions). */
 export async function searchRefs(db: DB, raw: string) {
 	const q = raw.trim();
 	if (!q) return { invoices: [], charges: [], subscriptions: [] };
-	const [invoices, charges, subscriptions] = await Promise.all([
+	// One round trip; each is an exact match on a column that leads an index.
+	const [invoices, charges, subscriptions] = await db.batch([
 		db
 			.select({ id: invoice.id, amount: invoice.amount, status: invoice.status, reference: invoice.reference, createdAt: invoice.createdAt })
 			.from(invoice)

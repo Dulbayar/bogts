@@ -1,11 +1,12 @@
 /** Dashboard reads for emitted events and their webhook deliveries. */
-import { and, asc, count, desc, eq, gt, gte, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import type { DB } from '../db';
 import { eventJson } from '../events/public';
-import { delivery, event, project } from '../schema';
+import { delivery, deliveryAttempt, event, project } from '../schema';
 import {
 	all,
 	failingDelivery,
+	isLatestDelivery,
 	finishPage,
 	latestDeliveryJoin,
 	PAGE_SIZE,
@@ -63,8 +64,8 @@ export function subjectHref(type: string, subjectId: string): string | null {
 
 const amountOf = (data: Record<string, unknown>): number | null => (typeof data.amount === 'number' ? data.amount : null);
 
-export async function listEvents(db: DB, f: EventFilter, cursor: Cursor = {}) {
-	const rows = await db
+function listEventsQuery(db: DB, f: EventFilter, cursor: Cursor) {
+	return db
 		.select({ event, delivery, projectName: project.name })
 		.from(event)
 		.innerJoin(project, eq(project.id, event.projectId))
@@ -80,6 +81,9 @@ export async function listEvents(db: DB, f: EventFilter, cursor: Cursor = {}) {
 		)
 		.orderBy(cursor.after ? asc(event.id) : desc(event.id))
 		.limit(PAGE_SIZE + 1);
+}
+
+function listEventsFrom(rows: Awaited<ReturnType<typeof listEventsQuery>>, cursor: Cursor) {
 	return finishPage(
 		rows.map((r) => ({
 			id: r.event.id,
@@ -95,25 +99,52 @@ export async function listEvents(db: DB, f: EventFilter, cursor: Cursor = {}) {
 		cursor
 	);
 }
-export type EventListRow = Awaited<ReturnType<typeof listEvents>> extends Page<infer R> ? R : never;
+
+export async function listEvents(db: DB, f: EventFilter, cursor: Cursor = {}) {
+	return listEventsFrom(await listEventsQuery(db, f, cursor), cursor);
+}
+export type EventListRow = ReturnType<typeof listEventsFrom> extends Page<infer R> ? R : never;
+
+const sumIf = (cond: SQL | undefined) => sql<number>`coalesce(sum(case when ${cond} then 1 else 0 end), 0)`;
+
+/**
+ * The tiles' counts. Deliveries are scoped by their own `project_id`, which
+ * is always their event's (both are written by one `eventInserts`).
+ * "Succeeded" (most rows) is not counted row by row: it is the events that
+ * have a delivery (a scan of `delivery_event_id_idx` alone) minus those whose
+ * latest delivery is pending or failed (few rows, found by status).
+ */
+function eventCountsStatements(db: DB, f: EventFilter) {
+	const scope = scoped(delivery.projectId, f.projectId);
+	return [
+		db.select({ n: count() }).from(event).where(scoped(event.projectId, f.projectId)),
+		db.select({ n: sql<number>`count(distinct ${delivery.eventId})` }).from(delivery).where(scope),
+		db
+			.select({ unsettled: count(), retrying: sumIf(stateCond('retrying')), failed: sumIf(stateCond('failed')) })
+			.from(delivery)
+			.where(all(inArray(delivery.status, ['pending', 'failed']), isLatestDelivery, scope))
+	] as const;
+}
+
+type EventCountRows = readonly [{ n: number }[], { n: number }[], { unsettled: number; retrying: number; failed: number }[]];
+
+function eventCountsFrom([[allN], [delivered], [open]]: EventCountRows): Record<string, number> {
+	return {
+		all: allN?.n ?? 0,
+		succeeded: Number(delivered?.n ?? 0) - (open?.unsettled ?? 0),
+		retrying: Number(open?.retrying ?? 0),
+		failed: Number(open?.failed ?? 0)
+	};
+}
 
 export async function eventCounts(db: DB, f: EventFilter): Promise<Record<string, number>> {
-	const base = scoped(event.projectId, f.projectId);
-	const one = async (cond: SQL | undefined) => {
-		const [r] = await db
-			.select({ n: count() })
-			.from(event)
-			.leftJoin(delivery, latestDeliveryJoin)
-			.where(all(base, cond));
-		return r?.n ?? 0;
-	};
-	const [allN, succeeded, retrying, failed] = await Promise.all([
-		one(undefined),
-		one(stateCond('succeeded')),
-		one(stateCond('retrying')),
-		one(stateCond('failed'))
-	]);
-	return { all: allN, succeeded, retrying, failed };
+	return eventCountsFrom(await db.batch(eventCountsStatements(db, f)));
+}
+
+/** The events list and its tiles in one round trip. */
+export async function eventsPage(db: DB, f: EventFilter, cursor: Cursor = {}) {
+	const [rows, ...counts] = await db.batch([listEventsQuery(db, f, cursor), ...eventCountsStatements(db, f)]);
+	return { page: listEventsFrom(rows, cursor), counts: eventCountsFrom(counts) };
 }
 
 export type DeliveryAttemptView = {
@@ -131,40 +162,43 @@ export type DeliveryAttemptView = {
 };
 
 /** Per-attempt rows (`delivery_attempt`), newest first. */
-async function attemptsFor(db: DB, eventId: string): Promise<DeliveryAttemptView[]> {
-	{
-		const rows = await db.all<Record<string, unknown>>(
-			sql`select id, number, "trigger", url, succeeded, http_status, error, signature, response_body, duration_ms, created_at
-			    from delivery_attempt where event_id = ${eventId} order by number desc limit 100`
-		);
-		return rows.map((r) => ({
-			id: String(r.id),
-			number: Number(r.number),
-			trigger: (r.trigger as string | null) ?? null,
-			url: (r.url as string | null) ?? null,
-			succeeded: Boolean(r.succeeded),
-			httpStatus: (r.http_status as number | null) ?? null,
-			error: (r.error as string | null) ?? null,
-			signature: (r.signature as string | null) ?? null,
-			responseBody: (r.response_body as string | null) ?? null,
-			durationMs: (r.duration_ms as number | null) ?? null,
-			createdAt: Number(r.created_at)
-		}));
-	}
+function attemptsQuery(db: DB, eventId: string) {
+	return db
+		.select({
+			id: deliveryAttempt.id,
+			number: deliveryAttempt.number,
+			trigger: deliveryAttempt.trigger,
+			url: deliveryAttempt.url,
+			succeeded: deliveryAttempt.succeeded,
+			httpStatus: deliveryAttempt.httpStatus,
+			error: deliveryAttempt.error,
+			signature: deliveryAttempt.signature,
+			responseBody: deliveryAttempt.responseBody,
+			durationMs: deliveryAttempt.durationMs,
+			createdAt: deliveryAttempt.createdAt
+		})
+		.from(deliveryAttempt)
+		.where(eq(deliveryAttempt.eventId, eventId))
+		.orderBy(desc(deliveryAttempt.number))
+		.limit(100);
 }
 
+/** The event page in one round trip: the deliveries and attempts are read by the event id. */
 export async function getEventDetail(db: DB, id: string) {
-	const [row] = await db
-		.select({ event, project: { id: project.id, name: project.name, webhookUrl: project.webhookUrl } })
-		.from(event)
-		.innerJoin(project, eq(project.id, event.projectId))
-		.where(eq(event.id, id))
-		.limit(1);
+	const [[row], deliveries, attemptRows] = await db.batch([
+		db
+			.select({ event, project: { id: project.id, name: project.name, webhookUrl: project.webhookUrl } })
+			.from(event)
+			.innerJoin(project, eq(project.id, event.projectId))
+			.where(eq(event.id, id))
+			.limit(1),
+		db.select().from(delivery).where(eq(delivery.eventId, id)).orderBy(desc(delivery.id)),
+		attemptsQuery(db, id)
+	]);
 	if (!row) return null;
 	const e = row.event;
-	const deliveries = await db.select().from(delivery).where(eq(delivery.eventId, e.id)).orderBy(desc(delivery.id));
 	const latest = deliveries[0] ?? null;
-	const attempts = await attemptsFor(db, e.id);
+	const attempts: DeliveryAttemptView[] = attemptRows;
 	return {
 		event: {
 			id: e.id,
@@ -189,12 +223,20 @@ export async function getEventDetail(db: DB, id: string) {
 	};
 }
 
-/** Events whose delivery is failing now (retrying or given up) in the last 7 days: the sidebar badge, same rows as `?status=failing`. */
-export async function failingDeliveryCount(db: DB, projectId: string | null, now = Date.now()): Promise<number> {
-	const [r] = await db
+/**
+ * Events whose delivery is failing now (retrying or given up) in the last 7
+ * days: the sidebar badge, same rows as `?status=failing`. Driven from the few
+ * failing deliveries (`delivery_status_created_idx`), each checked to be its
+ * event's latest; scoped by the delivery's project, which is its event's.
+ */
+export function failingDeliveryCountQuery(db: DB, projectId: string | null, now = Date.now()) {
+	return db
 		.select({ n: count() })
-		.from(event)
-		.innerJoin(delivery, latestDeliveryJoin)
-		.where(all(failingCond(now), scoped(event.projectId, projectId)));
+		.from(delivery)
+		.where(all(failingCond(now), isLatestDelivery, scoped(delivery.projectId, projectId)));
+}
+
+export async function failingDeliveryCount(db: DB, projectId: string | null, now = Date.now()): Promise<number> {
+	const [r] = await failingDeliveryCountQuery(db, projectId, now);
 	return r?.n ?? 0;
 }
