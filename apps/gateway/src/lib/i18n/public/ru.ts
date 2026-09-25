@@ -4,7 +4,6 @@ export const ru: PublicMessages = {
 	'lang.label': 'Язык',
 
 	'pay.title': 'Оплата',
-	'pay.to': 'Получатель',
 	'pay.banks': 'Выберите приложение банка',
 	'pay.orBanks': 'или выберите приложение банка',
 	'pay.scan': 'Отсканируйте QR-код в приложении банка',

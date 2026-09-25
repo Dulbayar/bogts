@@ -5,14 +5,17 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Icon from '$lib/components/Icon.svelte';
-	import Money from '$lib/components/Money.svelte';
 	import PublicShell from '$lib/components/PublicShell.svelte';
+	import PublicState from '$lib/components/public/PublicState.svelte';
 	import { pollStatus, type PolledStatus } from '$lib/checkout';
+	import { formatDateTimeIn, formatMoneyIn, translator } from '$lib/i18n/public';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 	const inv = $derived(data.invoice);
+	const payee = $derived(data.payee);
+	const t = $derived(translator(data.locale));
+	const amount = $derived(formatMoneyIn(data.locale, inv.amount));
 
 	let polled = $state<string | null>(null);
 	let slow = $state(false);
@@ -22,15 +25,15 @@
 		polled = s;
 		if (s === 'paid' && inv.returnUrl) {
 			const target = inv.returnUrl;
-			setTimeout(() => window.location.assign(target), 2000);
+			setTimeout(() => window.location.assign(target), 2600);
 		}
 	}
 
 	onMount(() => {
 		if (status === 'paid' && inv.returnUrl) {
 			const target = inv.returnUrl;
-			const t = setTimeout(() => window.location.assign(target), 2000);
-			return () => clearTimeout(t);
+			const timer = setTimeout(() => window.location.assign(target), 2600);
+			return () => clearTimeout(timer);
 		}
 		if (status !== 'pending') return;
 		const poller = pollStatus(inv.id, { until: Date.now() + 30_000, onStatus, onGiveUp: () => (slow = true) });
@@ -39,82 +42,78 @@
 </script>
 
 <svelte:head>
-	<title>{status === 'paid' ? 'Payment complete' : 'Payment'} · {inv.projectName}</title>
+	<title>{status === 'paid' ? t('state.paid.title') : amount} · {payee.name}</title>
 	<meta name="robots" content="noindex" />
 	{#if status === 'paid' && inv.returnUrl}
-		<meta http-equiv="refresh" content="2;url={inv.returnUrl}" />
+		<meta http-equiv="refresh" content="3;url={inv.returnUrl}" />
 	{:else if status === 'pending'}
 		<noscript><meta http-equiv="refresh" content="5" /></noscript>
 	{/if}
 </svelte:head>
 
-<PublicShell sandbox={data.sandbox}>
-	<section class="state" role="status">
+<PublicShell {payee} locale={data.locale} {t} sandbox={data.sandbox}>
+	{#snippet summary()}
+		<p class="amount display" aria-label={t('money.label', { amount })}>{amount}</p>
+		{#if inv.description}<p class="desc">{inv.description}</p>{/if}
+	{/snippet}
+
+	{#snippet action()}
 		{#if status === 'paid'}
-			<span class="icon ok"><Icon name="check" size={28} /></span>
-			<h1>Payment complete</h1>
-			<p class="muted"><Money amount={inv.amount} /> to {inv.projectName}</p>
-			{#if inv.returnUrl}
-				<p class="muted row"><span class="spinner" aria-hidden="true"></span> Returning you to {inv.projectName}…</p>
-				<a class="btn lg block" href={inv.returnUrl}>Return now</a>
-			{/if}
+			<PublicState kind="paid" title={t('state.paid.title')}>
+				{#if inv.paidAt}<p class="small">{t('state.paid.at', { time: formatDateTimeIn(data.locale, inv.paidAt) })}</p>{/if}
+				{#if inv.returnUrl}
+					<p class="returning"><span class="spinner" aria-hidden="true"></span> {t('state.returning')}</p>
+					<a class="btn primary lg block" href={inv.returnUrl} rel="external">{t('state.returnNow')}</a>
+				{/if}
+			</PublicState>
+		{:else if status === 'pending' && !slow}
+			<PublicState kind="confirming" title={t('state.confirming')} />
 		{:else if status === 'pending'}
-			{#if slow}
-				<span class="icon"><Icon name="clock" size={28} /></span>
-				<h1>This is taking longer than usual</h1>
-				<p class="muted">You can safely return. {inv.projectName} will be notified when it completes.</p>
-			{:else}
-				<span class="icon"><span class="spinner big" aria-hidden="true"></span></span>
-				<h1>Confirming your payment…</h1>
-				<p class="muted"><Money amount={inv.amount} /> to {inv.projectName}</p>
-			{/if}
-			{#if inv.returnUrl && slow}<a class="btn lg block" href={inv.returnUrl}>Return to {inv.projectName}</a>{/if}
+			<PublicState kind="slow" title={t('state.slow.title')}>
+				<p>{t('state.slow.body', { name: payee.name })}</p>
+				{#if inv.returnUrl}<a class="btn primary lg block" href={inv.returnUrl} rel="external">{t('state.back', { name: payee.name })}</a>{/if}
+			</PublicState>
+		{:else if status === 'expired'}
+			<PublicState kind="expired" title={t('state.expired.title')}>
+				<p>{t('state.expired.body', { name: payee.name })}</p>
+				{#if inv.returnUrl}<a class="btn lg block" href={inv.returnUrl} rel="external">{t('state.back', { name: payee.name })}</a>{/if}
+			</PublicState>
+		{:else if status === 'cancelled'}
+			<PublicState kind="cancelled" title={t('state.cancelled.title')}>
+				<p>{t('state.cancelled.body', { name: payee.name })}</p>
+				{#if inv.returnUrl}<a class="btn lg block" href={inv.returnUrl} rel="external">{t('state.back', { name: payee.name })}</a>{/if}
+			</PublicState>
 		{:else}
-			<span class="icon bad"><Icon name="x" size={28} /></span>
-			<h1>Payment didn't go through</h1>
-			{#if status === 'expired'}<p class="muted">The payment link expired.</p>{/if}
-			{#if inv.returnUrl}<a class="btn lg block" href={inv.returnUrl}>Return to {inv.projectName}</a>{/if}
+			<PublicState kind="failed" title={t('state.failed.title')}>
+				<p>{t('state.failed.body', { name: payee.name })}</p>
+				{#if inv.returnUrl}<a class="btn lg block" href={inv.returnUrl} rel="external">{t('state.back', { name: payee.name })}</a>{/if}
+			</PublicState>
 		{/if}
-	</section>
+	{/snippet}
 </PublicShell>
 
 <style>
-	.state {
-		display: grid;
-		justify-items: center;
-		gap: var(--space-3);
-		text-align: center;
-		margin-top: var(--space-8);
+	.amount {
+		font-size: 44px;
+		line-height: 52px;
+		overflow-wrap: anywhere;
 	}
-	h1 {
-		font-size: var(--text-xl);
-		line-height: var(--lh-xl);
-		font-weight: var(--weight-semibold);
-	}
-	.icon {
-		display: grid;
-		place-items: center;
-		width: 56px;
-		height: 56px;
-		border-radius: 50%;
-		background: var(--bg-muted);
+	.desc {
+		margin-top: var(--space-2);
+		font-size: var(--text-lg);
+		line-height: var(--lh-lg);
 		color: var(--fg-muted);
+		overflow-wrap: anywhere;
+		max-width: 36ch;
 	}
-	.icon.ok {
-		background: var(--success-bg);
-		color: var(--success-fg);
+	.small {
+		font-size: var(--text-sm);
 	}
-	.icon.bad {
-		background: var(--danger-bg);
-		color: var(--danger-fg);
-	}
-	.row {
-		display: flex;
+	.returning {
+		display: inline-flex;
 		align-items: center;
 		gap: var(--space-2);
-	}
-	.btn.lg {
-		height: 44px;
+		font-size: var(--text-sm);
 	}
 	.spinner {
 		width: 14px;
@@ -123,11 +122,6 @@
 		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
-	}
-	.spinner.big {
-		width: 24px;
-		height: 24px;
-		border-width: 3px;
 	}
 	@keyframes spin {
 		to {

@@ -16,6 +16,8 @@
 	import Tabs from '$lib/components/Tabs.svelte';
 	import Time from '$lib/components/Time.svelte';
 	import Title from '$lib/components/Title.svelte';
+	import LogoField from '$lib/components/brand/LogoField.svelte';
+	import BrandLogo from '$lib/components/brand/BrandLogo.svelte';
 	import { formatCount, formatMoney, maskedKey } from '$lib/format';
 	import { intervalUnit, planStatus } from '$lib/status';
 	import { toast } from '$lib/ui.svelte';
@@ -162,6 +164,22 @@
 	const webhookValue = $derived(form && 'webhookUrl' in form ? String(form.webhookUrl) : (p.webhookUrl ?? ''));
 	const webhookError = $derived(form && 'error' in form && form.action === 'webhook' ? form.error : null);
 	const renameError = $derived(form && 'error' in form && form.action === 'rename' ? form.error : null);
+	const brandError = $derived(form && 'error' in form && form.action === 'brand' ? form.error : null);
+	const displayNameValue = $derived(form && 'displayName' in form ? String(form.displayName) : (p.displayName ?? ''));
+	let brandKey = $state(0);
+	const saveBrand: SubmitFunction = () => {
+		busy = 'brand';
+		return async ({ result, update }) => {
+			busy = null;
+			if (result.type === 'success') {
+				toast('Payment page saved');
+				await update({ reset: true });
+				brandKey++;
+				return;
+			}
+			await update({ reset: false });
+		};
+	};
 </script>
 
 <Title title={p.name} />
@@ -169,6 +187,7 @@
 <header class="detail-head">
 	<div class="eyebrow">Project</div>
 	<div class="title-row">
+		<BrandLogo src={p.logoUrl} name={p.name} size={36} />
 		<h1 class="text">{p.name}</h1>
 		{#if archived}<span class="tag">Archived</span>{/if}
 	</div>
@@ -195,6 +214,35 @@
 					<div><dt>Created</dt><dd><Time at={p.createdAt} mode="detail" /></dd></div>
 				</dl>
 			</div>
+		</section>
+
+		<section class="card" aria-labelledby="brand-title">
+			<header><h2 id="brand-title">Payment page</h2></header>
+			{#key brandKey}
+				<form method="POST" action="?/brand" enctype="multipart/form-data" class="body stack" use:enhance={saveBrand}>
+					<div class="field">
+						<label for="displayName">Display name</label>
+						<input
+							id="displayName"
+							name="displayName"
+							class="input"
+							value={displayNameValue}
+							maxlength="80"
+							autocomplete="off"
+							placeholder={data.brand.companyName ?? p.name}
+						/>
+					</div>
+					<div class="field">
+						<span class="label">Logo</span>
+						<LogoField id="project-logo" current={p.logoUrl} name={displayNameValue || p.name} />
+					</div>
+					{#if brandError}<Callout tone="danger" role="alert">{brandError}</Callout>{/if}
+					<div class="brand-actions">
+						<span class="subtle">Empty fields use the company branding from Settings.</span>
+						<button type="submit" class="btn" disabled={busy === 'brand'}>{busy === 'brand' ? 'Saving…' : 'Save'}</button>
+					</div>
+				</form>
+			{/key}
 		</section>
 
 		<section class="card">
@@ -643,5 +691,13 @@
 			flex-direction: column;
 			align-items: stretch;
 		}
+	}
+	.brand-actions {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+		font-size: var(--text-xs);
 	}
 </style>

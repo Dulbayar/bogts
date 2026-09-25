@@ -23,6 +23,7 @@ import {
 	setWebhookUrl
 } from '$lib/server/admin/projects';
 import { recordAudit } from '$lib/server/audit';
+import { dropLogoIfUnused, fileFrom, logoUrl, prepareLogo, saveProjectBrand, storeLogo } from '$lib/server/branding';
 import { requireConfig } from '$lib/server/locals';
 import { validatePlan } from '$lib/server/providers/bonum/plans';
 import type { Plan } from '$lib/server/schema';
@@ -58,6 +59,8 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 			previousApiKeyPrefix: p.previousApiKeyPrefix,
 			webhookUrl: p.webhookUrl,
 			archivedAt: p.archivedAt,
+			displayName: p.displayName,
+			logoUrl: logoUrl(p.logoHash),
 			createdAt: p.createdAt,
 			updatedAt: p.updatedAt
 		},
@@ -117,6 +120,32 @@ export const actions: Actions = {
 		}
 		await recordAudit(locals.db, { admin, action: 'project.rename', subject: params.id, detail: { name: name.trim() } });
 		return { action: 'rename', ok: true };
+	},
+
+	/** The project's own brand on the public pay pages (display name, logo). Multipart. */
+	brand: async ({ locals, params, request }) => {
+		const { admin } = adminContext(locals);
+		const form = await request.formData();
+		const displayName = String(form.get('displayName') ?? '').trim() || null;
+		let logo: string | null | undefined;
+		try {
+			await mustProject(locals, params.id);
+			const file = fileFrom(form, 'logo');
+			if (file) logo = await storeLogo(locals.db, await prepareLogo(file));
+			else if (form.get('removeLogo') === '1') logo = null;
+			const { previousLogo } = await saveProjectBrand(locals.db, params.id, { displayName, logo });
+			if (logo !== undefined && previousLogo !== logo) await dropLogoIfUnused(locals.db, previousLogo);
+		} catch (err) {
+			const f = failFrom(err, 'brand');
+			return fail(f.status, { ...f.data, displayName: displayName ?? '' });
+		}
+		await recordAudit(locals.db, {
+			admin,
+			action: 'project.brand',
+			subject: params.id,
+			detail: { displayName, logo: logo === undefined ? 'kept' : logo === null ? 'removed' : logo }
+		});
+		return { action: 'brand', ok: true };
 	},
 
 	webhook: async ({ locals, params, request }) => {

@@ -40,7 +40,7 @@
 						{/if}
 						{#if e.delivery}<DeliveryBadge delivery={e.delivery} detail />{/if}
 					</div>
-					{#if e.detail}<div class="detail subtle">{e.detail}</div>{/if}
+					{#if e.detail}<div class="line2 subtle">{e.detail}</div>{/if}
 				</div>
 				<div class="when">
 					<Time at={e.at} mode="detail" />
@@ -83,7 +83,7 @@
 		color: var(--fg-muted);
 	}
 	.dot.gateway {
-		color: var(--accent);
+		color: var(--accent-text);
 		background: var(--accent-subtle);
 	}
 	.dot.tone-success {
@@ -106,7 +106,7 @@
 	.title .mono {
 		font-size: var(--text-sm);
 	}
-	.detail {
+	.line2 {
 		font-size: var(--text-xs);
 		overflow-wrap: anywhere;
 	}

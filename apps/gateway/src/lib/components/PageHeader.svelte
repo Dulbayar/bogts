@@ -33,17 +33,16 @@
 		gap: 2px;
 	}
 	h1 {
-		font-size: var(--text-xl);
-		line-height: var(--lh-xl);
+		font-family: var(--font-display);
+		font-size: 26px;
+		line-height: 32px;
 		font-weight: var(--weight-semibold);
-		letter-spacing: var(--tracking-tight);
+		letter-spacing: -0.015em;
 		overflow-wrap: anywhere;
 	}
 	.eyebrow {
-		font-size: var(--text-xs);
+		font-size: var(--text-sm);
 		color: var(--fg-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 		display: flex;
 		gap: var(--space-2);
 		align-items: center;

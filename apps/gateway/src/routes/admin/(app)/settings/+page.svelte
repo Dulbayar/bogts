@@ -7,12 +7,43 @@
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Time from '$lib/components/Time.svelte';
 	import Title from '$lib/components/Title.svelte';
+	import AccentField from '$lib/components/brand/AccentField.svelte';
+	import LogoField from '$lib/components/brand/LogoField.svelte';
 	import { formatRelative } from '$lib/format';
 	import { environmentStatus, providerStatus } from '$lib/status';
-	import { clock } from '$lib/ui.svelte';
-	import type { PageData } from './$types';
+	import { clock, toast } from '$lib/ui.svelte';
+	import type { SubmitFunction } from '@sveltejs/kit';
+	import type { ActionData, PageData } from './$types';
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	const brandError = $derived(form && 'error' in form && form.action === 'branding' ? form.error : null);
+	const brandValues = $derived(
+		form && 'values' in form && form.values
+			? form.values
+			: {
+					companyName: data.brand.companyName ?? '',
+					accentColor: data.brand.accent ?? '',
+					supportEmail: data.brand.supportEmail ?? '',
+					supportUrl: data.brand.supportUrl ?? ''
+				}
+	);
+	let saving = $state(false);
+	// Remount the logo and accent fields after a save, so they start from the saved values.
+	let formKey = $state(0);
+	const saveBrand: SubmitFunction = () => {
+		saving = true;
+		return async ({ result, update }) => {
+			saving = false;
+			if (result.type === 'success') {
+				toast('Branding saved');
+				await update({ reset: true });
+				formKey++;
+				return;
+			}
+			await update({ reset: false });
+		};
+	};
 	const THEMES = ['system', 'light', 'dark'] as const;
 	const staleFor = $derived(data.cron.tick ? formatRelative(data.cron.tick.lastRunAt, clock.now).replace(' ago', '') : null);
 	/** The jobs that run less often than every minute, with when each last ran. */
@@ -42,7 +73,7 @@
 							<span class="name">{p.name}</span>
 							<StatusBadge status={providerStatus(p.state)} />
 							{#if p.state !== 'off'}<StatusBadge status={environmentStatus(p.environment)} />{/if}
-							<Icon name="chevronDown" size={14} />
+							<span class="chev" aria-hidden="true"><Icon name="chevronDown" size={14} /></span>
 						</summary>
 						<ul class="secrets">
 							{#each p.secrets as s (s.name)}
@@ -68,6 +99,41 @@
 		</ul>
 	</section>
 
+	<section class="card" aria-labelledby="branding-title">
+		<header><h2 id="branding-title">Branding</h2></header>
+		{#key formKey}
+			<form method="POST" action="?/branding" enctype="multipart/form-data" class="body brand-form" use:enhance={saveBrand}>
+				<div class="field">
+					<span class="label">Logo</span>
+					<LogoField current={data.brand.logoUrl} name={brandValues.companyName || null} />
+				</div>
+				<div class="field">
+					<label for="companyName">Company name</label>
+					<input id="companyName" name="companyName" class="input" value={brandValues.companyName} maxlength="80" placeholder="Bogts" autocomplete="organization" />
+				</div>
+				<div class="field">
+					<label for="accent">Accent colour</label>
+					<AccentField value={brandValues.accentColor} />
+				</div>
+				<div class="two">
+					<div class="field">
+						<label for="supportEmail">Support email</label>
+						<input id="supportEmail" name="supportEmail" type="email" class="input" value={brandValues.supportEmail} placeholder="help@example.mn" autocomplete="off" />
+					</div>
+					<div class="field">
+						<label for="supportUrl">Support URL</label>
+						<input id="supportUrl" name="supportUrl" type="url" class="input" value={brandValues.supportUrl} placeholder="https://example.mn/help" autocomplete="off" />
+					</div>
+				</div>
+				{#if brandError}<Callout tone="danger" role="alert">{brandError}</Callout>{/if}
+				<div class="actions">
+					<span class="subtle small">Shown in the dashboard and on payment pages. Projects can use their own name and logo.</span>
+					<button type="submit" class="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save branding'}</button>
+				</div>
+			</form>
+		{/key}
+	</section>
+
 	<section class="card">
 		<header><h2>Callback URLs</h2></header>
 		<dl class="kv">
@@ -88,7 +154,7 @@
 
 	<section class="card">
 		<header><h2>Security</h2></header>
-		<dl class="kv">
+		<dl class="kv cols">
 			<div>
 				<dt>Dashboard sign-in</dt>
 				<dd>{data.security.mode === 'access' ? `Cloudflare Access · ${data.security.accessTeam}` : 'Admin password'}</dd>
@@ -109,7 +175,7 @@
 				</Callout>
 			</div>
 		{/if}
-		<dl class="kv">
+		<dl class="kv cols">
 			<div><dt>Last run</dt><dd><Time at={data.cron.tick?.lastRunAt} mode="relative" /></dd></div>
 			<div><dt>Deliveries due now</dt><dd class="num">{data.cron.dueDeliveries}</dd></div>
 			{#each jobRuns as { label, job } (label)}
@@ -172,13 +238,45 @@
 	summary::-webkit-details-marker {
 		display: none;
 	}
-	summary :global(.icon:last-child) {
+	/* Only the chevron turns; badge icons in the same row stay upright. */
+	.chev {
+		display: inline-grid;
 		margin-left: auto;
 		color: var(--fg-subtle);
-		transition: transform var(--dur-fast) var(--ease);
+		transition: transform var(--dur-base) var(--ease);
 	}
-	details[open] summary :global(.icon:last-child) {
+	details[open] .chev {
 		transform: rotate(180deg);
+	}
+	summary:hover .chev {
+		color: var(--fg);
+	}
+	.brand-form {
+		display: grid;
+		gap: var(--space-5);
+	}
+	.two {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-4);
+	}
+	.actions {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+		padding-top: var(--space-4);
+		border-top: 1px solid var(--border);
+	}
+	.small {
+		font-size: var(--text-xs);
+		flex: 1 1 240px;
+	}
+	@media (max-width: 559px) {
+		.two {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 	.name {
 		font-weight: var(--weight-medium);
@@ -200,6 +298,10 @@
 	}
 	.theme {
 		padding-bottom: var(--space-4);
+	}
+	.kv.cols {
+		grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+		column-gap: var(--space-6);
 	}
 	.kv code {
 		overflow-wrap: anywhere;
@@ -234,8 +336,8 @@
 		color: var(--fg-muted);
 	}
 	.seg-radio input:checked + span {
-		background: var(--bg-muted);
-		color: var(--fg);
+		background: var(--accent-subtle);
+		color: var(--accent-text);
 		font-weight: var(--weight-medium);
 	}
 	.seg-radio input:focus-visible + span {

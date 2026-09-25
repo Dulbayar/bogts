@@ -4,7 +4,6 @@ export const zhHans: PublicMessages = {
 	'lang.label': '语言',
 
 	'pay.title': '付款',
-	'pay.to': '收款方',
 	'pay.banks': '选择您的银行应用',
 	'pay.orBanks': '或选择您的银行应用',
 	'pay.scan': '请用银行应用扫描二维码',

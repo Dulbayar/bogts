@@ -160,6 +160,8 @@
 		margin-bottom: var(--space-4);
 	}
 	.calm :global(.icon) {
+		display: grid;
+		place-items: center;
 		color: var(--success-fg);
 	}
 	.attention {
@@ -215,11 +217,18 @@
 		color: var(--fg-muted);
 	}
 	.kpi .value {
-		font-size: var(--text-2xl);
-		line-height: var(--lh-2xl);
+		font-family: var(--font-display);
+		font-size: 32px;
+		line-height: 40px;
 		font-weight: var(--weight-semibold);
-		font-variant-numeric: tabular-nums;
-		letter-spacing: var(--tracking-tight);
+		font-variant-numeric: lining-nums tabular-nums;
+		letter-spacing: -0.015em;
+	}
+	.kpi:first-child {
+		background:
+			linear-gradient(160deg, color-mix(in srgb, var(--accent-subtle) 90%, transparent), transparent 70%),
+			var(--bg);
+		border-color: var(--accent-border);
 	}
 	.kpi .foot {
 		font-size: var(--text-xs);

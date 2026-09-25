@@ -1,9 +1,11 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { afterNavigate, goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import Icon, { type IconName } from '$lib/components/Icon.svelte';
 	import ProjectSwitcher from '$lib/components/ProjectSwitcher.svelte';
+	import BrandLogo from '$lib/components/brand/BrandLogo.svelte';
 	import { t, type MessageKey } from '$lib/i18n/en';
 	import { scopedHref } from '$lib/url';
 	import type { LayoutData } from './$types';
@@ -92,13 +94,13 @@
 
 <div class="app">
 	<aside class="sidebar" class:open={drawer} aria-label="Main">
-		<div class="brand">
-			<span class="logo" aria-hidden="true">B</span>
+		<a class="brand" href={resolve('/admin')} aria-label="{data.brand.companyName ?? 'Bogts'}: overview">
+			<BrandLogo src={data.brand.logoUrl} name={data.brand.companyName} size={30} />
 			<span class="names">
-				<span class="name">Bogts</span>
+				<span class="name">{data.brand.companyName ?? 'Bogts'}</span>
 				<span class="host" title={data.host}>{data.host}</span>
 			</span>
-		</div>
+		</a>
 		<ProjectSwitcher projects={data.projects} scope={data.scope} />
 		<nav>
 			{#each MAIN as item (item.key)}{@render navItem(item)}{/each}
@@ -106,7 +108,8 @@
 			{#each MORE as item (item.key)}{@render navItem(item)}{/each}
 		</nav>
 		<footer>
-			<span class="env-line">
+			<span class="env-line" class:live={data.env.mode === 'production'} class:test={data.env.mode === 'sandbox' || data.env.mode === 'mixed'}>
+				<span class="env-dot" aria-hidden="true"></span>
 				{#if data.env.mode === 'production'}Production{:else if data.env.mode === 'none'}No provider on{:else}{data.env.mode === 'mixed' ? 'Mixed' : 'Sandbox'} · {data.env.sandbox.join(', ')}{/if}
 			</span>
 			{#if data.authMode === 'password'}
@@ -180,26 +183,30 @@
 	.brand {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-1) var(--space-2);
-		font-weight: var(--weight-semibold);
+		gap: var(--space-3);
+		padding: var(--space-2);
+		margin: calc(var(--space-1) * -1) 0 var(--space-1);
+		border-radius: var(--radius-lg);
+		color: var(--fg);
 		min-width: 0;
 	}
-	.logo {
-		display: grid;
-		place-items: center;
-		width: 22px;
-		height: 22px;
-		border-radius: var(--radius-md);
-		background: var(--accent);
-		color: var(--fg-on-accent);
-		font-size: var(--text-xs);
-		flex: none;
+	.brand:hover {
+		text-decoration: none;
+		background: var(--bg-muted);
 	}
 	.names {
 		display: grid;
 		min-width: 0;
-		line-height: 1.2;
+		line-height: 1.25;
+	}
+	.name {
+		font-family: var(--font-display);
+		font-size: var(--text-lg);
+		font-weight: var(--weight-semibold);
+		letter-spacing: -0.01em;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.host {
 		overflow: hidden;
@@ -234,23 +241,34 @@
 		width: 100%;
 		cursor: pointer;
 	}
+	.nav-item :global(.icon) {
+		color: var(--fg-subtle);
+		transition: color var(--dur-fast) var(--ease);
+	}
 	.nav-item:hover {
 		background: var(--bg-muted);
 		color: var(--fg);
 		text-decoration: none;
 	}
+	.nav-item:hover :global(.icon) {
+		color: var(--fg-muted);
+	}
 	.nav-item.active {
-		background: var(--bg-muted);
+		background: var(--bg);
 		color: var(--fg);
+		box-shadow: var(--shadow-sm), 0 0 0 1px var(--border);
+	}
+	.nav-item.active :global(.icon) {
+		color: var(--accent-text);
 	}
 	.nav-item.active::before {
 		content: '';
 		position: absolute;
 		left: -12px;
-		top: 6px;
-		bottom: 6px;
-		width: 2px;
-		border-radius: 2px;
+		top: 7px;
+		bottom: 7px;
+		width: 3px;
+		border-radius: 0 3px 3px 0;
 		background: var(--accent);
 	}
 	.label {
@@ -281,8 +299,25 @@
 		font-size: var(--text-xs);
 	}
 	.env-line {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		padding: 0 var(--space-2);
 		color: var(--fg-subtle);
+	}
+	.env-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--fg-subtle);
+		flex: none;
+	}
+	.env-line.live .env-dot {
+		background: var(--success-fg);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-fg) 22%, transparent);
+	}
+	.env-line.test .env-dot {
+		background: var(--warning-fg);
 	}
 	.who {
 		padding: 0 var(--space-2);

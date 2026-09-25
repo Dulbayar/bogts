@@ -35,4 +35,9 @@
 		color: var(--fg);
 		border-bottom-color: var(--accent);
 	}
+	a {
+		transition:
+			color var(--dur-fast) var(--ease),
+			border-color var(--dur-fast) var(--ease);
+	}
 </style>

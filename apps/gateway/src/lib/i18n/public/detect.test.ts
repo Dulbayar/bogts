@@ -3,7 +3,7 @@ import { fromAcceptLanguage, matchLocale, pickLocale } from './detect';
 import { en } from './en';
 import { es } from './es';
 import { fr } from './fr';
-import { formatMoneyIn, LOCALES } from './index';
+import { formatDateTimeIn, formatMoneyIn, LOCALES } from './index';
 import { mn } from './mn';
 import { ru } from './ru';
 import { zhHans } from './zh-Hans';
@@ -98,6 +98,17 @@ describe('formatMoneyIn', () => {
 		expect(formatMoneyIn('fr', 49000)).toMatch(/^₮49\s000$/u);
 		expect(formatMoneyIn('ru', 49000)).toMatch(/^₮49\s000$/u);
 		expect(formatMoneyIn('en', 0.01)).toBe('₮0.01');
-		expect(formatMoneyIn('mn', 1234500)).toMatch(/^₮1.234.500$/);
+		expect(formatMoneyIn('mn', 1234500)).toBe('₮1,234,500');
+	});
+});
+
+describe('formatDateTimeIn', () => {
+	const at = Date.UTC(2026, 8, 25, 6, 5); // 14:05 in Ulaanbaatar
+	it('writes Mongolian dates by hand, in UB time', () => {
+		expect(formatDateTimeIn('mn', at)).toBe('2026.09.25 14:05');
+	});
+	it('uses Intl for the others', () => {
+		expect(formatDateTimeIn('en', at)).toContain('14:05');
+		expect(formatDateTimeIn('fr', at)).toContain('2026');
 	});
 });

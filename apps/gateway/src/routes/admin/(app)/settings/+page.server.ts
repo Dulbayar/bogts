@@ -1,5 +1,7 @@
 import { fail } from '@sveltejs/kit';
-import { adminContext, adminOnly } from '$lib/server/admin/actions';
+import { adminContext, adminOnly, failFrom } from '$lib/server/admin/actions';
+import { recordAudit } from '$lib/server/audit';
+import { dropLogoIfUnused, fileFrom, parseBrandInput, prepareLogo, saveBranding, storeLogo } from '$lib/server/branding';
 import { callbackUrls, cronStatus, providerHealth } from '$lib/server/admin/health';
 import { THEME_COOKIE } from '$lib/server/admin/prefs';
 import { requireConfig } from '$lib/server/locals';
@@ -24,6 +26,37 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+	/** Company branding: name, logo, accent, support contacts. Multipart (the logo file). */
+	branding: async ({ locals, request }) => {
+		const { admin } = adminContext(locals);
+		const form = await request.formData();
+		const echo = {
+			companyName: String(form.get('companyName') ?? ''),
+			accentColor: String(form.get('accentColor') ?? ''),
+			supportEmail: String(form.get('supportEmail') ?? ''),
+			supportUrl: String(form.get('supportUrl') ?? '')
+		};
+		let logo: string | null | undefined;
+		let input: ReturnType<typeof parseBrandInput>;
+		try {
+			input = parseBrandInput(form);
+			const file = fileFrom(form, 'logo');
+			if (file) logo = await storeLogo(locals.db, await prepareLogo(file));
+			else if (form.get('removeLogo') === '1') logo = null;
+			const { previousLogo } = await saveBranding(locals.db, input, logo);
+			if (logo !== undefined && previousLogo !== logo) await dropLogoIfUnused(locals.db, previousLogo);
+		} catch (err) {
+			const f = failFrom(err, 'branding');
+			return fail(f.status, { ...f.data, values: echo });
+		}
+		await recordAudit(locals.db, {
+			admin,
+			action: 'branding.update',
+			detail: { ...input, logo: logo === undefined ? 'kept' : logo === null ? 'removed' : logo }
+		});
+		return { action: 'branding', ok: true };
+	},
+
 	theme: async ({ locals, request, cookies, url }) => {
 		adminContext(locals);
 		const theme = String((await request.formData()).get('theme') ?? '');

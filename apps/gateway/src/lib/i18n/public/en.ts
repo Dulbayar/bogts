@@ -4,7 +4,6 @@ export const en: PublicMessages = {
 	'lang.label': 'Language',
 
 	'pay.title': 'Pay',
-	'pay.to': 'Paying',
 	'pay.banks': 'Choose your bank app',
 	'pay.orBanks': 'or choose your bank app',
 	'pay.scan': 'Scan the QR code with your bank app',

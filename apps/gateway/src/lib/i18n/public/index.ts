@@ -36,14 +36,29 @@ export function translator(locale: Locale): Translate {
 	return (key, vars = {}) => messages[key].replace(/\{(\w+)\}/g, (_, name: string) => String(vars[name] ?? `{${name}}`));
 }
 
-/** MNT with the language's digit grouping: `₮49,000`, `₮49 000`, `₮49.000`. */
+/**
+ * MNT with the language's digit grouping: `₮49,000`, `₮49 000`, `₮49.000`.
+ * Mongolian uses commas (as bank apps do); pinned, since browsers may lack `mn`.
+ */
 export function formatMoneyIn(locale: Locale, amount: number): string {
-	const n = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(Math.abs(amount));
+	const n = new Intl.NumberFormat(locale === 'mn' ? 'en-US' : locale, { maximumFractionDigits: 2 }).format(Math.abs(amount));
 	return `${amount < 0 ? '−' : ''}₮${n}`;
 }
 
-/** A date and time in Ulaanbaatar time, written the language's way. */
+/**
+ * A date and time in Ulaanbaatar time, written the language's way. Mongolian
+ * is `2026.09.26 14:05`, built by hand: browsers' Intl data often lacks `mn`
+ * and falls back to English month names.
+ */
 export function formatDateTimeIn(locale: Locale, ms: number): string {
+	if (locale === 'mn') {
+		const parts = Object.fromEntries(
+			new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ulaanbaatar', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+				.formatToParts(ms)
+				.map((x) => [x.type, x.value])
+		);
+		return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
+	}
 	return new Intl.DateTimeFormat(locale, {
 		timeZone: 'Asia/Ulaanbaatar',
 		day: 'numeric',
