@@ -75,9 +75,19 @@ export async function verifyAccessJwt(
  * Password sessions
  * ------------------------------------------------------------------ */
 
+/** Per isolate: the derived key for the last (key, password) pair, so a request verifies with one HMAC, not two. */
+let cachedSessionKey: { encryptionKey: string; password: string; key: Promise<string> } | null = null;
+
 async function sessionKey(config: Config): Promise<string> {
 	if (config.admin.mode !== 'password') throw new Error('password sessions are off in Access mode');
-	return hmacSha256Hex(config.encryptionKey, `bogts admin session v1\u0000${config.admin.password}`);
+	const { encryptionKey } = config;
+	const { password } = config.admin;
+	if (cachedSessionKey?.encryptionKey !== encryptionKey || cachedSessionKey.password !== password) {
+		const key = hmacSha256Hex(encryptionKey, `bogts admin session v1\u0000${password}`);
+		cachedSessionKey = { encryptionKey, password, key };
+		key.catch(() => (cachedSessionKey = null));
+	}
+	return cachedSessionKey.key;
 }
 
 /** A signed session value, valid for 12 h from `now`. */

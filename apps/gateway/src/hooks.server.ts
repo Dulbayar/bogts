@@ -13,7 +13,7 @@ import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { errorJson } from '$lib/server/api/errors';
 import { authenticateAdmin } from '$lib/server/auth/admin';
 import { getDb } from '$lib/server/db';
-import { tryLoadConfig } from '$lib/server/env';
+import { tryLoadConfigCached } from '$lib/server/env';
 import { deliverFresh } from '$lib/server/events/deliver';
 import { ADMIN_LOGIN_PATH, applySecurityHeaders, areaOf, isLoginPath } from '$lib/server/gate';
 
@@ -25,7 +25,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		return applySecurityHeaders(errorJson(500, 'internal_error', 'Cloudflare bindings unavailable'), url, area);
 	}
 
-	const loaded = tryLoadConfig(env);
+	const loaded = tryLoadConfigCached(env);
 	event.locals.env = env;
 	event.locals.db = getDb(env.DB);
 	event.locals.config = loaded.ok ? loaded.config : null;
