@@ -62,6 +62,10 @@ The first release: one Cloudflare Worker for Bonum and QPay.
   (`subscription.payment_failed`, `reason: "renewal_missing"`). Renewals are
   deduplicated by billing period, so a reconciled renewal and its late
   webhook never both count.
+- **Bonum failure codes on the timeline**: a failed invoice, checkout, card
+  change, renewal or queued charge records Bonum's status, bank response code
+  (with a short meaning, e.g. `bank code 51 (insufficient funds)`) and payment
+  vendor. Bonum's free-text `message` is still never stored.
 - **Docs**: correcting events, granting by `reference` idempotently, and the
   reconciliation behaviour (`docs/webhooks.md`).
 

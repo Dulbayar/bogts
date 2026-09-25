@@ -110,6 +110,30 @@ export const TOKEN_PAYMENT = `{
  */
 export const UNSUBSCRIBED_ASSUMED = `{"type":"UNSUBSCRIBED","status":"SUCCESS","message":"","body":{"subscriptionId":41,"planId":4,"transactionId":"20000007","completedAt":"2026-01-30 02:00:08"}}`;
 
+/**
+ * NOT printed in the docs: the "Online Payment Webhook Message (Failure Card
+ * Payment Processing)" sample in bonum-api.md is empty. The shape follows the
+ * failed PAYMENT sample plus the fields a real card decline carried
+ * (`body.status` ERROR, `respCode` 51, `paymentVendor` E_COMMERCE). `message`
+ * holds free text that must never be stored.
+ */
+export const PAYMENT_FAILED_CARD_ASSUMED = `{
+    "type": "PAYMENT",
+    "status": "FAILED",
+    "message": "Үлдэгдэл хүрэлцэхгүй (51)",
+    "body": {
+        "transactionId": "B347700",
+        "amount": 15000.00,
+        "currency": "MNT",
+        "updatedAt": 1769657291559,
+        "terminalId": "17171994",
+        "invoiceId": "9aff7d69001c03f486f64410f9daa82d",
+        "paymentVendor": "E_COMMERCE",
+        "status": "ERROR",
+        "respCode": "51"
+    }
+}`;
+
 /** Makes a doc sample valid JSON: drops `//` line comments (outside strings) and trailing commas. */
 export function docJson(text: string): string {
 	return text

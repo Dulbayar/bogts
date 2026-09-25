@@ -20,7 +20,8 @@
  *
  * Every payment goes through the ledger (UNIQUE provider + providerRef) in the
  * same batch as its state change and exactly one event, so a replay is a no-op.
- * Provider-side facts go to the activity timeline as short safe text. Throwing
+ * Provider-side facts go to the activity timeline as short safe text; failures
+ * carry Bonum's allowlisted codes (`failure.ts`), never its `message`. Throwing
  * makes the route answer 503, so Bonum retries.
  */
 import { and, eq, inArray, like, ne, or } from 'drizzle-orm';
@@ -44,6 +45,7 @@ import { failCharge, succeedCharge } from '../../services/charges';
 import { nowOf, type ServiceContext } from '../../services/context';
 import { endInvoice, settleInvoice } from '../../services/settle';
 import { endMandate, subscriptionEventData } from '../../services/subscriptions';
+import { withFailure } from './failure';
 import { addInterval, billingPeriodKey, bonumTime } from './util';
 
 export type WebhookResult = 'processed' | 'duplicate' | 'ignored';
@@ -217,7 +219,7 @@ export async function handleBonumWebhook(ctx: ServiceContext, payload: unknown):
 async function cardToken(ctx: ServiceContext, body: Body, success: boolean): Promise<WebhookResult> {
 	const txn = str(body.transactionId);
 	const initial = await subBy(ctx, 'tokenize', txn);
-	if (initial) return success ? activate(ctx, initial, body) : checkoutFailed(ctx, initial, txn);
+	if (initial) return success ? activate(ctx, initial, body) : checkoutFailed(ctx, initial, body, txn);
 
 	let replacing = await subBy(ctx, 'pending', txn);
 	if (!replacing && success) {
@@ -228,7 +230,7 @@ async function cardToken(ctx: ServiceContext, body: Body, success: boolean): Pro
 			if (candidate?.pendingTransactionId) replacing = candidate;
 		}
 	}
-	if (replacing) return success ? cardReplaced(ctx, replacing, body, txn) : replacementFailed(ctx, replacing, txn);
+	if (replacing) return success ? cardReplaced(ctx, replacing, body, txn) : replacementFailed(ctx, replacing, body, txn);
 
 	await note(ctx, {
 		subjectType: 'provider',
@@ -394,10 +396,10 @@ async function flagDuplicateLive(ctx: ServiceContext, sub: Subscription) {
 	}
 }
 
-async function checkoutFailed(ctx: ServiceContext, sub: Subscription, txn: string): Promise<WebhookResult> {
+async function checkoutFailed(ctx: ServiceContext, sub: Subscription, body: Body, txn: string): Promise<WebhookResult> {
 	const base = { projectId: sub.projectId, subjectType: 'subscription' as const, subjectId: sub.id };
 	if (sub.status !== 'pending') {
-		await note(ctx, { ...base, kind: 'bonum.card_token.failed_late', summary: 'Ignored a failed tokenization for a subscription past checkout' });
+		await note(ctx, { ...base, kind: 'bonum.card_token.failed_late', summary: withFailure('Ignored a failed tokenization for a subscription past checkout', body) });
 		return 'ignored';
 	}
 	const plan = await planOf(ctx, sub);
@@ -426,7 +428,7 @@ async function checkoutFailed(ctx: ServiceContext, sub: Subscription, txn: strin
 		if (await eventExists(ctx, dedupeKey)) return 'duplicate';
 		throw err;
 	}
-	await note(ctx, { ...base, kind: 'bonum.card_token.failed', summary: 'The customer did not complete card checkout' });
+	await note(ctx, { ...base, kind: 'bonum.card_token.failed', summary: withFailure('The customer did not complete card checkout', body) });
 	return 'processed';
 }
 
@@ -487,7 +489,7 @@ async function cardReplaced(ctx: ServiceContext, sub: Subscription, body: Body, 
 	return 'processed';
 }
 
-async function replacementFailed(ctx: ServiceContext, sub: Subscription, txn: string): Promise<WebhookResult> {
+async function replacementFailed(ctx: ServiceContext, sub: Subscription, body: Body, txn: string): Promise<WebhookResult> {
 	await ctx.db
 		.update(subTable)
 		.set({ pendingTransactionId: null, followUpLink: null, updatedAt: nowOf(ctx) })
@@ -497,7 +499,7 @@ async function replacementFailed(ctx: ServiceContext, sub: Subscription, txn: st
 		subjectType: 'subscription',
 		subjectId: sub.id,
 		kind: 'bonum.card_token.replace_failed',
-		summary: 'The card change was not completed; the current card stays'
+		summary: withFailure('The card change was not completed; the current card stays', body)
 	});
 	return 'processed';
 }
@@ -686,7 +688,7 @@ async function renewalFailed(
 	const failedAt = bonumTime(body.completedAt) ?? bonumTime(body.updatedAt);
 	const failedKey = failedAt === null ? null : billingPeriodKey(failedAt, sub.billingAnchor, plan.interval);
 	if (failedKey && (await periodHolder(ctx, sub.id, failedKey))) {
-		await note(ctx, { ...base, kind: 'bonum.subscription_payment.failed_late', summary: 'Ignored a failed renewal attempt for a period already paid' });
+		await note(ctx, { ...base, kind: 'bonum.subscription_payment.failed_late', summary: withFailure('Ignored a failed renewal attempt for a period already paid', body) });
 		return 'duplicate';
 	}
 	const now = nowOf(ctx);
@@ -720,7 +722,7 @@ async function renewalFailed(
 		if (await eventExists(ctx, dedupeKey)) return 'duplicate';
 		throw err;
 	}
-	await note(ctx, { ...base, kind: 'bonum.subscription_payment.failed', summary: 'A renewal charge failed; Bonum will retry' });
+	await note(ctx, { ...base, kind: 'bonum.subscription_payment.failed', summary: withFailure('A renewal charge failed; Bonum will retry', body) });
 	return 'processed';
 }
 
@@ -783,7 +785,7 @@ async function invoicePayment(ctx: ServiceContext, body: Body, success: boolean)
 		await note(ctx, {
 			...base,
 			kind: expired ? 'bonum.payment.expired' : 'bonum.payment.failed',
-			summary: expired ? 'Bonum reported the invoice expired' : 'Bonum reported the payment failed'
+			summary: withFailure(expired ? 'Bonum reported the invoice expired' : 'Bonum reported the payment failed', body)
 		});
 		return ended ? 'processed' : 'duplicate';
 	}
@@ -832,6 +834,6 @@ async function tokenPayment(ctx: ServiceContext, body: Body, success: boolean): 
 		return r === 'settled' ? 'processed' : 'duplicate';
 	}
 	const r = await failCharge(ctx, c, 'card_declined');
-	if (r === 'failed') await note(ctx, { ...base, kind: 'bonum.token_payment.failed', summary: 'The queued card payment was declined' });
+	if (r === 'failed') await note(ctx, { ...base, kind: 'bonum.token_payment.failed', summary: withFailure('The queued card payment was declined', body) });
 	return r === 'failed' ? 'processed' : 'duplicate';
 }

@@ -22,6 +22,7 @@ import {
 	CARD_TOKEN_SUCCESS,
 	docJson,
 	PAYMENT_FAILED,
+	PAYMENT_FAILED_CARD_ASSUMED,
 	PAYMENT_SUCCESS,
 	SUBSCRIPTION_PAYMENT,
 	TOKEN_PAYMENT,
@@ -70,6 +71,7 @@ async function seedSub(plan: Plan, overrides: Partial<Subscription> = {}): Promi
 }
 
 const subRow = async (id: string) => (await db.select().from(subTable).where(eq(subTable.id, id)))[0]!;
+const summaries = async (kind: string) => (await db.select().from(activity).where(eq(activity.kind, kind))).map((a) => a.summary);
 const events = async () => (await db.select().from(event)).sort((a, b) => a.id.localeCompare(b.id));
 const ledgerRows = async () => db.select().from(ledger);
 
@@ -171,6 +173,21 @@ describe('CARD-TOKEN (checkout)', () => {
 			['subscription.payment_failed', 'checkout_failed']
 		]);
 		expect(await ledgerRows()).toHaveLength(0);
+		expect(await summaries('bonum.card_token.failed')).toEqual(['The customer did not complete card checkout']);
+	});
+
+	it('a failed checkout records the card status and bank code', async () => {
+		const plan = await plan4();
+		await seedSub(plan, { tokenizeTransactionId: '20000007' });
+		const failed = withField(
+			withField(cardToken41(), 'status', '"FAILED"'),
+			'expiry',
+			'"2026/11", "cardStatus":"INACTIVE", "respCode":"05"'
+		);
+		expect(await hook(failed)).toBe('processed');
+		expect(await summaries('bonum.card_token.failed')).toEqual([
+			'The customer did not complete card checkout. Bonum: INACTIVE, bank code 05 (do not honor)'
+		]);
 	});
 
 	it('a late success still activates an abandoned (failed) checkout: the mandate is real', async () => {
@@ -305,6 +322,15 @@ describe('SUBSCRIPTION-PAYMENT (renewals)', () => {
 		expect(await ledgerRows()).toHaveLength(0);
 	});
 
+	it('a failed renewal records the bank code when Bonum sends one', async () => {
+		await activeMandate41();
+		const failed = withField(renewal(786, '2026-01-27 02:00:08', 'FAILED'), 'currency', '"MNT", "respCode":"61"');
+		expect(await hook(failed)).toBe('processed');
+		expect(await summaries('bonum.subscription_payment.failed')).toEqual([
+			'A renewal charge failed; Bonum will retry. Bonum: bank code 61 (amount limit exceeded)'
+		]);
+	});
+
 	it('a failure sets past_due once; the retried charge then succeeds', async () => {
 		const { sub } = await activeMandate41();
 		const failed = renewal(786, '2026-01-27 02:00:08', 'FAILED');
@@ -312,6 +338,7 @@ describe('SUBSCRIPTION-PAYMENT (renewals)', () => {
 		expect(await hook(failed)).toBe('duplicate');
 		expect((await subRow(sub.id)).status).toBe('past_due');
 		expect((await events()).filter((e) => e.type === 'subscription.payment_failed')).toHaveLength(1);
+		expect(await summaries('bonum.subscription_payment.failed')).toEqual(['A renewal charge failed; Bonum will retry']);
 
 		expect(await hook(renewal(786, '2026-01-28 02:00:08'))).toBe('processed');
 		expect(await subRow(sub.id)).toMatchObject({ status: 'active', nextBillAt: at('2026-02-27 00:00:00') });
@@ -447,6 +474,26 @@ describe('PAYMENT (hosted invoice)', () => {
 		const [inv] = await db.select().from(invoiceTable).where(eq(invoiceTable.id, 'B347699'));
 		expect(inv!.status).toBe('expired');
 		expect((await events()).map((e) => e.type)).toEqual(['invoice.expired']);
+		expect((await summaries('bonum.payment.expired'))[0]).toBe('Bonum reported the invoice expired. Bonum: EXPIRED');
+	});
+
+	it('records the card decline codes, never the free-text message', async () => {
+		await seedInvoice('B347700', 15_000);
+		expect(await hook(PAYMENT_FAILED_CARD_ASSUMED)).toBe('processed');
+		const [inv] = await db.select().from(invoiceTable).where(eq(invoiceTable.id, 'B347700'));
+		expect(inv!.status).toBe('failed');
+		expect((await events()).map((e) => e.type)).toEqual(['invoice.failed']);
+		expect(await summaries('bonum.payment.failed')).toEqual([
+			'Bonum reported the payment failed. Bonum: ERROR, bank code 51 (insufficient funds), card'
+		]);
+		const all = JSON.stringify(await db.select().from(activity)) + JSON.stringify(await events());
+		expect(all).not.toContain('Үлдэгдэл');
+	});
+
+	it('records a CANCELLED invoice status', async () => {
+		await seedInvoice('B347699', 15_000);
+		expect(await hook(withField(PAYMENT_FAILED, 'invoiceStatus', '"CANCELLED"'))).toBe('processed');
+		expect(await summaries('bonum.payment.failed')).toEqual(['Bonum reported the payment failed. Bonum: CANCELLED']);
 	});
 
 	it('ignores an unknown invoice', async () => {
@@ -492,6 +539,22 @@ describe('TOKEN-PAYMENT (queued charge)', () => {
 		const [c] = await db.select().from(chargeTable).where(eq(chargeTable.id, id));
 		expect(c).toMatchObject({ status: 'failed', failureCode: 'card_declined' });
 		expect((await events()).filter((e) => e.type === 'charge.failed')).toHaveLength(1);
+		expect(await summaries('bonum.token_payment.failed')).toEqual(['The queued card payment was declined']);
+	});
+
+	it('records the bank code of a declined queued charge', async () => {
+		await queuedCharge();
+		const failed = withField(
+			withField(TOKEN_PAYMENT, 'status', '"FAILED"'),
+			'completedAt',
+			'"2026-01-26 12:58:03", "status":"FAILED", "respCode":"54", "paymentVendor":"E_COMMERCE"'
+		);
+		expect(await hook(failed)).toBe('processed');
+		const [c] = await db.select().from(chargeTable).where(eq(chargeTable.providerTransactionId, '6ab20250512180511006'));
+		expect(c!.failureCode).toBe('card_declined');
+		expect(await summaries('bonum.token_payment.failed')).toEqual([
+			'The queued card payment was declined. Bonum: FAILED, bank code 54 (expired card), card'
+		]);
 	});
 });
 
