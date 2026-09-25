@@ -48,6 +48,20 @@ describe('publicInvoice', () => {
 		expect(json).not.toContain('internal');
 	});
 
+	it('keeps bank logos only from QPay hosts', async () => {
+		const id = await seed({
+			deeplinks: [
+				{ name: 'khanbank', description: 'Khan bank', logo: 'https://qpay.mn/q/logo/khanbank.png', link: 'khanbank://q?x' },
+				{ name: 'tdb', description: 'TDB', logo: 'https://s3.qpay.mn/p/tdb.png', link: 'tdbbank://q?x' },
+				{ name: 'other', description: 'Other', logo: 'https://evil.example/logo.png', link: 'other://q?x' },
+				{ name: 'port', description: 'Port', logo: 'https://qpay.mn:8443/logo.png', link: 'port://q?x' },
+				{ name: 'plain', description: 'Plain', logo: 'http://qpay.mn/logo.png', link: 'plain://q?x' }
+			]
+		});
+		const v = await publicInvoice(db, id, NOW);
+		expect(v!.deeplinks.map((d) => d.logo ?? null)).toEqual(['https://qpay.mn/q/logo/khanbank.png', 'https://s3.qpay.mn/p/tdb.png', null, null, null]);
+	});
+
 	it('reports a pending invoice past expiry as expired, without QR', async () => {
 		const id = await seed();
 		const v = await publicInvoice(db, id, NOW + 700_000);

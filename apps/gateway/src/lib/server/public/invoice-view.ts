@@ -7,6 +7,7 @@
 import { eq } from 'drizzle-orm';
 import qrcode from 'qrcode-generator';
 import type { DB } from '../db';
+import { logoUrl } from '../branding';
 import { invoice, project, type Deeplink } from '../schema';
 
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
@@ -15,6 +16,9 @@ export type PublicInvoice = {
 	id: string;
 	provider: 'qpay' | 'bonum';
 	projectName: string;
+	/** The project's own public brand (Settings → project → Public page), when set */
+	projectDisplayName: string | null;
+	projectLogoUrl: string | null;
 	amount: number;
 	description: string;
 	/** `pending | paid | expired | failed | cancelled`, with a pending invoice past its expiry reported as expired */
@@ -23,8 +27,27 @@ export type PublicInvoice = {
 	paidAt: number | null;
 	returnUrl: string | null;
 	qr: { image: string | null; path: string | null; size: number } | null;
-	deeplinks: { name: string; link: string }[];
+	deeplinks: PublicDeeplink[];
 };
+
+export type PublicDeeplink = { name: string; link: string; logo?: string };
+
+/**
+ * Where QPay serves bank logos (seen in stored deeplinks). The page's CSP
+ * `img-src` allows exactly these (vite.config.ts); any other logo is dropped
+ * and the page shows the bank's initial instead.
+ */
+export const QPAY_LOGO_HOSTS = ['qpay.mn', 's3.qpay.mn'] as const;
+
+function safeLogo(raw: string | undefined): string | undefined {
+	if (!raw) return undefined;
+	try {
+		const url = new URL(raw);
+		return url.protocol === 'https:' && !url.port && (QPAY_LOGO_HOSTS as readonly string[]).includes(url.hostname) ? url.toString() : undefined;
+	} catch {
+		return undefined;
+	}
+}
 
 /** An http(s) URL, or null. The only redirect target the pages ever use comes from here. */
 export function safeReturnUrl(raw: string | null | undefined): string | null {
@@ -38,11 +61,12 @@ export function safeReturnUrl(raw: string | null | undefined): string | null {
 }
 
 /** A bank-app link is only ever an app scheme or https; never `javascript:` or `data:`. */
-function safeDeeplink(d: Deeplink): { name: string; link: string } | null {
+function safeDeeplink(d: Deeplink): PublicDeeplink | null {
 	try {
 		const url = new URL(d.link);
 		if (['javascript:', 'data:', 'vbscript:', 'file:', 'blob:'].includes(url.protocol)) return null;
-		return { name: d.description?.trim() || d.name, link: d.link };
+		const logo = safeLogo(d.logo);
+		return { name: d.description?.trim() || d.name, link: d.link, ...(logo ? { logo } : {}) };
 	} catch {
 		return null;
 	}
@@ -73,7 +97,7 @@ const BASE64_PNG = /^[A-Za-z0-9+/=\s]+$/;
 export async function publicInvoice(db: DB, id: string, now = Date.now()): Promise<PublicInvoice | null> {
 	if (!ULID.test(id)) return null;
 	const [row] = await db
-		.select({ invoice, projectName: project.name })
+		.select({ invoice, projectName: project.name, projectDisplayName: project.displayName, projectLogoHash: project.logoHash })
 		.from(invoice)
 		.innerJoin(project, eq(project.id, invoice.projectId))
 		.where(eq(invoice.id, id))
@@ -90,6 +114,8 @@ export async function publicInvoice(db: DB, id: string, now = Date.now()): Promi
 		id: inv.id,
 		provider: inv.provider,
 		projectName: row.projectName,
+		projectDisplayName: row.projectDisplayName?.trim() || null,
+		projectLogoUrl: logoUrl(row.projectLogoHash),
 		amount: inv.amount,
 		description: inv.description,
 		status,
