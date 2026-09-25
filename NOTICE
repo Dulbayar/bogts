@@ -3,3 +3,7 @@ Copyright 2026 gege.mn
 
 This product includes software developed at gege.mn (https://gege.mn).
 Licensed under the Apache License, Version 2.0; see the LICENSE file.
+
+This product bundles the Geologica and Piazzolla fonts in
+apps/gateway/static/fonts, licensed under the SIL Open Font License,
+Version 1.1; see OFL-Geologica.txt and OFL-Piazzolla.txt in that directory.

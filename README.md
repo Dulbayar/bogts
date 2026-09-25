@@ -43,6 +43,10 @@ straight to your own merchant accounts. Bogts never holds funds.
 - **Dashboard** at `/admin`: payments, subscriptions, events with re-delivery,
   projects, plans and usage. It is protected by Cloudflare Access or a
   password, and it refuses to run with neither.
+- **Your brand on the payment pages:** company name, logo, accent colour and
+  support contacts, with a per-project name and logo.
+- **Multilingual payment pages:** Mongolian by default, plus English, French,
+  Russian, Simplified Chinese and Spanish.
 - **Runs on the free plan.** One Worker and one D1 database, with no Queues.
 - **`@gege-mn/bogts`:** a typed client and a webhook signature check, with no
   runtime dependencies.

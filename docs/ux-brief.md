@@ -860,7 +860,6 @@ carries the payee's brand: the project's display name and logo, else the
 company's (Settings → Branding), else the project name. They speak Mongolian
 by default, plus English, French, Russian, Simplified Chinese and Spanish
 (see §15a).
-It shows the project name, because the customer is paying *that* company.
 
 ### 14.1 QPay checkout: `/pay/[invoiceId]`
 

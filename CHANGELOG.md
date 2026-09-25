@@ -11,6 +11,20 @@ The first release: one Cloudflare Worker for Bonum and QPay.
 
 ### Added
 
+- **Redesign**: a coin-pouch identity (Geologica and Piazzolla, self-hosted
+  under `static/fonts`, OFL) for the dashboard and the payment pages, with
+  light and dark themes.
+- **Branding**: Settings → Branding sets the company name, logo (PNG, SVG or
+  WebP, up to 256 KB), accent colour and support contacts; each project can
+  override the display name and logo on its payment pages. SVG logos are
+  rebuilt from an allowlist; files with scripts or embedded images are
+  refused. **Apply migration `0007_branding` before deploying.**
+- **QPay bank logos**: the hosted `/pay` page shows each bank app's logo (from
+  QPay's `qpay.mn` hosts only), with the bank's initial as a fallback.
+- **Public pages in 6 languages**: `/pay`, `/return` and the public error
+  pages speak Mongolian (the default), English, French, Russian, Simplified
+  Chinese and Spanish, picked by `?lang=`, a cookie, country or
+  `Accept-Language`.
 - **Performance**: each dashboard page loads in one or two D1 round trips, and
   migration `0006_perf_indexes` replaces 13 indexes with ones matched to the
   queries (see `docs/performance.md`). Apply migrations before deploying.
