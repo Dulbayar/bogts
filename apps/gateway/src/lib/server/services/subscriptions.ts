@@ -136,7 +136,8 @@ async function loadOwned(ctx: ServiceContext, projectId: string, id: string): Pr
 }
 
 async function toJson(ctx: ServiceContext, sub: Subscription): Promise<SubscriptionJson> {
-	return subscriptionJson(sub, await loadPlan(ctx, sub.planId), await loadCard(ctx, sub.cardId));
+	const [plan, card] = await Promise.all([loadPlan(ctx, sub.planId), loadCard(ctx, sub.cardId)]);
+	return subscriptionJson(sub, plan, card);
 }
 
 async function reload(ctx: ServiceContext, id: string): Promise<Subscription> {

@@ -43,6 +43,13 @@
       "when": 1790352208472,
       "tag": "0005_renewal_reconcile",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790359009011,
+      "tag": "0006_perf_indexes",
+      "breakpoints": true
     }
   ]
 }

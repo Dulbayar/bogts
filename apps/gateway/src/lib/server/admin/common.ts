@@ -5,7 +5,7 @@
 import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { DB } from '../db';
-import { delivery, event, project, type Delivery } from '../schema';
+import { delivery, event, project, type Delivery, type EventRow } from '../schema';
 import { deliveryState, type DeliveryState } from '$lib/status';
 
 export const PAGE_SIZE = 50;
@@ -49,11 +49,49 @@ export async function scopeFrom(db: DB, url: URL): Promise<string | null> {
 	return row ? row.id : null;
 }
 
+const scopes = new WeakMap<object, Map<string, Promise<string | null>>>();
+
+/**
+ * `scopeFrom`, once per request: the (app) layout and the page share it, so a
+ * page can start without awaiting `parent()` (layout and page loads then run
+ * in parallel). No query at all without `?project=`.
+ */
+export function requestScope(locals: App.Locals, url: URL): Promise<string | null> {
+	if (!isId(url.searchParams.get('project'))) return Promise.resolve(null);
+	let byUrl = scopes.get(locals);
+	if (!byUrl) scopes.set(locals, (byUrl = new Map()));
+	const key = url.searchParams.get('project')!;
+	let p = byUrl.get(key);
+	if (!p) byUrl.set(key, (p = scopeFrom(locals.db, url)));
+	return p;
+}
+
+/**
+ * Runs a page's reads for the request's scope without waiting for the scope
+ * check: it starts with the `?project=` id as given (in parallel with the
+ * check) and runs again for the checked scope only when they differ (no such
+ * project). One round trip on the critical path instead of two.
+ */
+export async function withScope<T>(locals: App.Locals, url: URL, load: (scope: string | null) => Promise<T>): Promise<T> {
+	const asked = url.searchParams.get('project');
+	const requested = isId(asked) ? asked : null;
+	const [scope, result] = await Promise.all([requestScope(locals, url), load(requested)]);
+	return scope === requested ? result : load(scope);
+}
+
 /** AND of the defined conditions (drizzle's `and` skips undefined). */
 export const all = (...conds: (SQL | undefined)[]) => and(...conds);
 
-/** The newest delivery of each event (normally the only one). */
-export const latestDeliveryJoin = sql`${delivery.id} = (select max(d2.id) from delivery d2 where d2.event_id = ${event.id})`;
+/**
+ * The newest delivery of each event (normally the only one): the event's
+ * delivery with no later one. Both halves are probes of `delivery_event_id_idx`,
+ * and the planner may drive from either table. (A `delivery.id = (select
+ * max(…))` join made SQLite scan every event per candidate delivery.)
+ */
+export const latestDeliveryJoin = sql`${delivery.eventId} = ${event.id} and not exists (select 1 from delivery d2 where d2.event_id = ${delivery.eventId} and d2.id > ${delivery.id})`;
+
+/** A `delivery` row that is its event's latest (no later delivery of the same event), without joining the event. */
+export const isLatestDelivery = sql`not exists (select 1 from delivery d2 where d2.event_id = ${delivery.eventId} and d2.id > ${delivery.id})`;
 
 export type DeliverySummary = {
 	id: string;
@@ -85,24 +123,31 @@ export type SubjectEvent = {
 	delivery: DeliverySummary | null;
 };
 
+/**
+ * The two reads behind `eventsForSubjects`, for a caller's `db.batch`: the
+ * deliveries select their events through a subquery rather than an id list,
+ * so both go in one round trip. `subjectIds` must not be empty.
+ */
+export function subjectEventsStatements(db: DB, subjectIds: string[]) {
+	return [
+		db.select().from(event).where(inArray(event.subjectId, subjectIds)).orderBy(desc(event.id)).limit(200),
+		// All the subjects' events (a superset past 200 events; the extra rows go unused).
+		db
+			.select()
+			.from(delivery)
+			.where(inArray(delivery.eventId, db.select({ id: event.id }).from(event).where(inArray(event.subjectId, subjectIds))))
+			.orderBy(desc(delivery.id))
+	] as const;
+}
+
 /** Events emitted about a subject (or several), newest first, with their delivery. */
 export async function eventsForSubjects(db: DB, subjectIds: string[]): Promise<SubjectEvent[]> {
 	if (subjectIds.length === 0) return [];
-	const events = await db
-		.select()
-		.from(event)
-		.where(inArray(event.subjectId, subjectIds))
-		.orderBy(desc(event.id))
-		.limit(200);
-	if (events.length === 0) return [];
-	const deliveries = await db
-		.select()
-		.from(delivery)
-		.where(inArray(
-			delivery.eventId,
-			events.map((e) => e.id)
-		))
-		.orderBy(desc(delivery.id));
+	return subjectEventsFrom(await db.batch(subjectEventsStatements(db, subjectIds)));
+}
+
+/** `eventsForSubjects` from already-read `subjectEventsStatements` rows. */
+export function subjectEventsFrom([events, deliveries]: readonly [EventRow[], Delivery[]]): SubjectEvent[] {
 	const byEvent = new Map<string, Delivery>();
 	for (const d of deliveries) if (!byEvent.has(d.eventId)) byEvent.set(d.eventId, d);
 	return events.map((e) => ({
@@ -119,8 +164,12 @@ export async function projectNames(db: DB): Promise<Map<string, string>> {
 	return new Map(rows.map((r) => [r.id, r.name]));
 }
 
-/** SQL for a delivery that is failing now: retrying or given up, and not merely missing a webhook URL. */
-export const failingDelivery = sql`(${delivery.status} = 'failed' or (${delivery.status} = 'pending' and ${delivery.attempts} > 0)) and coalesce(${delivery.lastError}, '') != 'no_webhook_url'`;
+/**
+ * SQL for a delivery that is failing now: retrying or given up, and not merely
+ * missing a webhook URL. The `in` lets `delivery_status_created_idx` answer it
+ * together with a `created_at` window.
+ */
+export const failingDelivery = sql`${delivery.status} in ('failed', 'pending') and (${delivery.status} = 'failed' or ${delivery.attempts} > 0) and coalesce(${delivery.lastError}, '') != 'no_webhook_url'`;
 
 /** Scope condition helper: `eq(column, projectId)` when scoped. */
 export function scoped(column: AnySQLiteColumn, projectId: string | null): SQL | undefined {

@@ -10,7 +10,7 @@ import { deliverFresh } from '$lib/server/events/deliver';
 import { pollQpayInvoice } from '$lib/server/providers/qpay/callback';
 import { ipRateKey } from '$lib/server/ip';
 import { safeReturnUrl, STATUS_LIMIT } from '$lib/server/public/invoice-view';
-import { consumeRateLimit } from '$lib/server/rate-limit';
+import { rateLimitHit, rateLimitResult } from '$lib/server/rate-limit';
 import { invoice } from '$lib/server/schema';
 import type { RequestHandler } from './$types';
 
@@ -25,12 +25,18 @@ export const GET: RequestHandler = handle(async ({ locals, params, getClientAddr
 	} catch {
 		/* no address in this environment: one shared bucket */
 	}
-	const limit = await consumeRateLimit(locals.db, `pay-status:${ipRateKey(address)}`, STATUS_LIMIT, STATUS_WINDOW_MS);
+	// The hit and the read in one round trip (the payer's page polls this).
+	const now = Date.now();
+	const [hit, rows] = await locals.db.batch([
+		rateLimitHit(locals.db, `pay-status:${ipRateKey(address)}`, STATUS_WINDOW_MS, now),
+		locals.db.select().from(invoice).where(eq(invoice.id, params.invoiceId)).limit(1)
+	]);
+	const limit = rateLimitResult(hit, STATUS_LIMIT, STATUS_WINDOW_MS, now);
 	if (!limit.ok) {
 		const retry = Math.max(1, Math.ceil((limit.resetAt - Date.now()) / 1000));
 		return errorJson(429, 'rate_limited', 'Too many requests', { 'retry-after': String(retry) });
 	}
-	let [row] = await locals.db.select().from(invoice).where(eq(invoice.id, params.invoiceId)).limit(1);
+	let [row] = rows;
 	if (!row) return errorJson(404, 'not_found', 'Invoice not found');
 	if (locals.config) {
 		const ctx = { db: locals.db, config: locals.config, waitUntil: locals.waitUntil };

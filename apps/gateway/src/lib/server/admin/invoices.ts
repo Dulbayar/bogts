@@ -2,8 +2,8 @@
 import { asc, count, desc, eq, gt, lt } from 'drizzle-orm';
 import type { DB } from '../db';
 import { INVOICE_STATUSES, PROVIDERS, invoice, project, type InvoiceStatus, type Provider } from '../schema';
-import { all, eventsForSubjects, finishPage, PAGE_SIZE, scoped, type Cursor, type Page } from './common';
-import { buildTimeline, type TimelineEntry } from './timeline';
+import { all, finishPage, PAGE_SIZE, scoped, subjectEventsFrom, subjectEventsStatements, type Cursor, type Page } from './common';
+import { timelineFrom, timelineStatements, type TimelineEntry } from './timeline';
 
 export const INVOICE_TILES = ['paid', 'pending', 'expired', 'failed'] as const;
 
@@ -42,8 +42,8 @@ export type InvoiceRow = {
 	expiresAt: number;
 };
 
-export async function listInvoices(db: DB, f: InvoiceFilter, cursor: Cursor = {}): Promise<Page<InvoiceRow>> {
-	const rows = await db
+function listInvoicesQuery(db: DB, f: InvoiceFilter, cursor: Cursor) {
+	return db
 		.select({
 			id: invoice.id,
 			projectId: invoice.projectId,
@@ -71,12 +71,14 @@ export async function listInvoices(db: DB, f: InvoiceFilter, cursor: Cursor = {}
 		)
 		.orderBy(cursor.after ? asc(invoice.id) : desc(invoice.id))
 		.limit(PAGE_SIZE + 1);
-	return finishPage(rows, cursor);
 }
 
-/** Counts per status for the tiles (same scope and provider filter, any status). */
-export async function invoiceCounts(db: DB, f: InvoiceFilter): Promise<Record<string, number>> {
-	const rows = await db
+export async function listInvoices(db: DB, f: InvoiceFilter, cursor: Cursor = {}): Promise<Page<InvoiceRow>> {
+	return finishPage(await listInvoicesQuery(db, f, cursor), cursor);
+}
+
+function invoiceCountsQuery(db: DB, f: InvoiceFilter) {
+	return db
 		.select({ status: invoice.status, n: count() })
 		.from(invoice)
 		.where(
@@ -87,6 +89,9 @@ export async function invoiceCounts(db: DB, f: InvoiceFilter): Promise<Record<st
 			)
 		)
 		.groupBy(invoice.status);
+}
+
+function invoiceCountsFrom(rows: { status: InvoiceStatus; n: number }[]): Record<string, number> {
 	const out: Record<string, number> = { all: 0 };
 	for (const r of rows) {
 		out[r.status] = r.n;
@@ -95,16 +100,32 @@ export async function invoiceCounts(db: DB, f: InvoiceFilter): Promise<Record<st
 	return out;
 }
 
+/** Counts per status for the tiles (same scope and provider filter, any status). */
+export async function invoiceCounts(db: DB, f: InvoiceFilter): Promise<Record<string, number>> {
+	return invoiceCountsFrom(await invoiceCountsQuery(db, f));
+}
+
+/** The payments list and its tiles in one round trip. */
+export async function invoicesPage(db: DB, f: InvoiceFilter, cursor: Cursor = {}) {
+	const [rows, counts] = await db.batch([listInvoicesQuery(db, f, cursor), invoiceCountsQuery(db, f)]);
+	return { page: finishPage(rows, cursor), counts: invoiceCountsFrom(counts) };
+}
+
+/** The payment page in one round trip: everything after the invoice row is read by its id. */
 export async function getInvoiceDetail(db: DB, id: string) {
-	const [row] = await db
-		.select({ invoice, project: { id: project.id, name: project.name, webhookUrl: project.webhookUrl } })
-		.from(invoice)
-		.innerJoin(project, eq(project.id, invoice.projectId))
-		.where(eq(invoice.id, id))
-		.limit(1);
+	const [[row], eventRows, deliveryRows, ...timelineRows] = await db.batch([
+		db
+			.select({ invoice, project: { id: project.id, name: project.name, webhookUrl: project.webhookUrl } })
+			.from(invoice)
+			.innerJoin(project, eq(project.id, invoice.projectId))
+			.where(eq(invoice.id, id))
+			.limit(1),
+		...subjectEventsStatements(db, [id]),
+		...timelineStatements(db, 'invoice', [id])
+	]);
 	if (!row) return null;
 	const inv = row.invoice;
-	const events = await eventsForSubjects(db, [inv.id]);
+	const events = subjectEventsFrom([eventRows, deliveryRows]);
 	const extra: TimelineEntry[] = [
 		{
 			key: 'created',
@@ -125,7 +146,7 @@ export async function getInvoiceDetail(db: DB, id: string) {
 			href: null
 		});
 	}
-	const timeline = await buildTimeline(db, { subjectType: 'invoice', subjectIds: [inv.id], events, extra });
+	const timeline = timelineFrom(timelineRows, { subjectType: 'invoice', events, extra });
 	return {
 		invoice: {
 			id: inv.id,

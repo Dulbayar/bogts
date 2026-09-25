@@ -2,8 +2,8 @@
 import { asc, count, desc, eq, gt, inArray, lt } from 'drizzle-orm';
 import type { DB } from '../db';
 import { CHARGE_STATUSES, card, charge, project, type ChargeStatus } from '../schema';
-import { all, eventsForSubjects, finishPage, PAGE_SIZE, scoped, type Cursor, type Page } from './common';
-import { buildTimeline, type TimelineEntry } from './timeline';
+import { all, finishPage, PAGE_SIZE, scoped, subjectEventsFrom, subjectEventsStatements, type Cursor, type Page } from './common';
+import { timelineFrom, timelineStatements, type TimelineEntry } from './timeline';
 
 export const CHARGE_TILES = ['succeeded', 'pending', 'failed', 'reversed'] as const;
 
@@ -18,8 +18,8 @@ export function chargeFilterFrom(url: URL, projectId: string | null): ChargeFilt
 const statusCond = (s: ChargeStatus | null | undefined) =>
 	!s ? undefined : s === 'pending' || s === 'queued' ? inArray(charge.status, ['pending', 'queued']) : eq(charge.status, s);
 
-export async function listCharges(db: DB, f: ChargeFilter, cursor: Cursor = {}) {
-	const rows = await db
+function listChargesQuery(db: DB, f: ChargeFilter, cursor: Cursor) {
+	return db
 		.select({
 			id: charge.id,
 			projectId: charge.projectId,
@@ -44,16 +44,28 @@ export async function listCharges(db: DB, f: ChargeFilter, cursor: Cursor = {}) 
 		)
 		.orderBy(cursor.after ? asc(charge.id) : desc(charge.id))
 		.limit(PAGE_SIZE + 1);
-	return finishPage(rows, cursor);
+}
+
+export async function listCharges(db: DB, f: ChargeFilter, cursor: Cursor = {}) {
+	return finishPage(await listChargesQuery(db, f, cursor), cursor);
 }
 export type ChargeRow = Awaited<ReturnType<typeof listCharges>> extends Page<infer R> ? R : never;
 
+function chargeCountsQuery(db: DB, f: ChargeFilter) {
+	return db.select({ status: charge.status, n: count() }).from(charge).where(scoped(charge.projectId, f.projectId)).groupBy(charge.status);
+}
+
 export async function chargeCounts(db: DB, f: ChargeFilter): Promise<Record<string, number>> {
-	const rows = await db
-		.select({ status: charge.status, n: count() })
-		.from(charge)
-		.where(scoped(charge.projectId, f.projectId))
-		.groupBy(charge.status);
+	return chargeCountsFrom(await chargeCountsQuery(db, f));
+}
+
+/** The charges list and its tiles in one round trip. */
+export async function chargesPage(db: DB, f: ChargeFilter, cursor: Cursor = {}) {
+	const [rows, counts] = await db.batch([listChargesQuery(db, f, cursor), chargeCountsQuery(db, f)]);
+	return { page: finishPage(rows, cursor), counts: chargeCountsFrom(counts) };
+}
+
+function chargeCountsFrom(rows: { status: ChargeStatus; n: number }[]): Record<string, number> {
 	const out: Record<string, number> = { all: 0 };
 	for (const r of rows) {
 		const key = r.status === 'queued' ? 'pending' : r.status;
@@ -63,24 +75,29 @@ export async function chargeCounts(db: DB, f: ChargeFilter): Promise<Record<stri
 	return out;
 }
 
+/** The charge page in one round trip: everything after the charge row is read by its id. */
 export async function getChargeDetail(db: DB, id: string) {
-	const [row] = await db
-		.select({ charge, card, project: { id: project.id, name: project.name } })
-		.from(charge)
-		.innerJoin(card, eq(card.id, charge.cardId))
-		.innerJoin(project, eq(project.id, charge.projectId))
-		.where(eq(charge.id, id))
-		.limit(1);
+	const [[row], eventRows, deliveryRows, ...timelineRows] = await db.batch([
+		db
+			.select({ charge, card, project: { id: project.id, name: project.name } })
+			.from(charge)
+			.innerJoin(card, eq(card.id, charge.cardId))
+			.innerJoin(project, eq(project.id, charge.projectId))
+			.where(eq(charge.id, id))
+			.limit(1),
+		...subjectEventsStatements(db, [id]),
+		...timelineStatements(db, 'charge', [id])
+	]);
 	if (!row) return null;
 	const c = row.charge;
-	const events = await eventsForSubjects(db, [c.id]);
+	const events = subjectEventsFrom([eventRows, deliveryRows]);
 	const extra: TimelineEntry[] = [
 		{ key: 'created', at: c.createdAt, source: 'gateway', title: 'Charge requested', detail: `transaction ${c.providerTransactionId}`, href: null }
 	];
 	if (c.status === 'queued') {
 		extra.push({ key: 'queued', at: c.updatedAt, source: 'provider', title: 'Queued by Bonum', detail: 'waiting for TOKEN-PAYMENT', href: null });
 	}
-	const timeline = await buildTimeline(db, { subjectType: 'charge', subjectIds: [c.id], events, extra });
+	const timeline = timelineFrom(timelineRows, { subjectType: 'charge', events, extra });
 	return {
 		charge: {
 			id: c.id,

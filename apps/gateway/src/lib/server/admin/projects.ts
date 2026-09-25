@@ -8,13 +8,23 @@
  * newest entry at or after the plan's last edit is its status, so no schema
  * change is needed and every check leaves a trail.
  */
-import { and, count, desc, eq, gte, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNull, ne, sql, type SQLWrapper } from 'drizzle-orm';
 import { ApiError } from '../api/errors';
 import { issueApiKey } from '../auth/api-key';
 import { encrypt } from '../crypto';
 import type { DB } from '../db';
 import { newId, newWebhookSecret } from '../ids';
-import { auditLog, delivery, plan, project, subscription, type Plan, type PlanInterval } from '../schema';
+import {
+	DELIVERY_STATUSES,
+	auditLog,
+	delivery,
+	plan,
+	project,
+	subscription,
+	type AuditLog,
+	type Plan,
+	type PlanInterval
+} from '../schema';
 import type { PlanCheck } from '$lib/status';
 import { failingDelivery } from './common';
 
@@ -58,25 +68,41 @@ export function parseWebhookUrl(raw: string, allowLocalHttp: boolean): string | 
  * Reads
  * ------------------------------------------------------------------ */
 
-/** All projects, A–Z, with a health dot: for the switcher. */
-export async function projectOptions(db: DB, now = Date.now()) {
-	const rows = await db
-		.select({ id: project.id, name: project.name, archivedAt: project.archivedAt })
-		.from(project)
-		.orderBy(project.name);
-	const failing = await db
-		.select({ projectId: delivery.projectId, n: count() })
-		.from(delivery)
-		.where(and(failingDelivery, gte(delivery.createdAt, now - WEEK)))
-		.groupBy(delivery.projectId);
+/** The two reads behind `projectOptions`, for a caller's `db.batch`. */
+export function projectOptionsStatements(db: DB, now = Date.now()) {
+	return [
+		db.select({ id: project.id, name: project.name, archivedAt: project.archivedAt }).from(project).orderBy(project.name),
+		db
+			.select({ projectId: delivery.projectId, n: count() })
+			.from(delivery)
+			.where(and(failingDelivery, gte(delivery.createdAt, now - WEEK)))
+			.groupBy(delivery.projectId)
+	] as const;
+}
+
+type ProjectOptionRows = readonly [
+	{ id: string; name: string; archivedAt: number | null }[],
+	{ projectId: string; n: number }[]
+];
+
+export function projectOptionsFrom([rows, failing]: ProjectOptionRows) {
 	const bad = new Set(failing.filter((f) => f.n > 0).map((f) => f.projectId));
 	return rows.map((r) => ({ id: r.id, name: r.name, archived: r.archivedAt !== null, failing: bad.has(r.id) }));
 }
-export type ProjectOption = Awaited<ReturnType<typeof projectOptions>>[number];
 
-/** Delivery health per project over the last 7 days. */
-export async function deliveryHealth(db: DB, now = Date.now()) {
-	const rows = await db
+/** All projects, A–Z, with a health dot: for the switcher. One round trip. */
+export async function projectOptions(db: DB, now = Date.now()) {
+	return projectOptionsFrom(await db.batch(projectOptionsStatements(db, now)));
+}
+export type ProjectOption = ReturnType<typeof projectOptionsFrom>[number];
+
+/**
+ * Delivery health per project over the last 7 days, as one statement. The
+ * status list covers every status; it is there so `delivery_status_created_idx`
+ * can serve the time window.
+ */
+export function deliveryHealthQuery(db: DB, now = Date.now(), projectId: string | null = null) {
+	return db
 		.select({
 			projectId: delivery.projectId,
 			total: count(),
@@ -85,8 +111,17 @@ export async function deliveryHealth(db: DB, now = Date.now()) {
 			lastFailureAt: sql<number | null>`max(case when ${failingDelivery} then ${delivery.updatedAt} end)`
 		})
 		.from(delivery)
-		.where(gte(delivery.createdAt, now - WEEK))
+		.where(
+			and(
+				inArray(delivery.status, DELIVERY_STATUSES),
+				gte(delivery.createdAt, now - WEEK),
+				projectId ? eq(delivery.projectId, projectId) : undefined
+			)
+		)
 		.groupBy(delivery.projectId);
+}
+
+export function deliveryHealthFrom(rows: Awaited<ReturnType<typeof deliveryHealthQuery>>) {
 	return new Map(
 		rows.map((r) => [
 			r.projectId,
@@ -95,11 +130,20 @@ export async function deliveryHealth(db: DB, now = Date.now()) {
 	);
 }
 
+/** Delivery health per project over the last 7 days (or for one project). */
+export async function deliveryHealth(db: DB, now = Date.now(), projectId: string | null = null) {
+	return deliveryHealthFrom(await deliveryHealthQuery(db, now, projectId));
+}
+
 export async function listProjects(db: DB, now = Date.now()) {
-	const rows = await db.select().from(project).orderBy(desc(project.id));
-	const health = await deliveryHealth(db, now);
-	const planRows = await db.select().from(plan);
-	const checks = await planChecks(db, planRows);
+	const [rows, healthRows, planRows, validations] = await db.batch([
+		db.select().from(project).orderBy(desc(project.id)),
+		deliveryHealthQuery(db, now),
+		db.select().from(plan),
+		planValidations(db, db.select({ id: plan.id }).from(plan))
+	]);
+	const health = deliveryHealthFrom(healthRows);
+	const checks = planChecksFrom(planRows, validations);
 	return rows.map((p) => {
 		const plans = planRows.filter((pl) => pl.projectId === p.id);
 		return {
@@ -124,15 +168,27 @@ export type PlanCheckView = {
 	remote: { name: string; amount: number; recurringType: string; status: string } | null;
 };
 
-/** The latest validation of each plan (see the module note). */
-export async function planChecks(db: DB, plans: Plan[]): Promise<Map<string, PlanCheckView>> {
-	const out = new Map<string, PlanCheckView>();
-	if (plans.length === 0) return out;
-	const rows = await db
+/**
+ * The `plan.validate` audit entries of some plans, newest first. `planIds` is
+ * a list or a subquery (so a caller can batch this with the plan read).
+ */
+export function planValidations(db: DB, planIds: string[] | SQLWrapper) {
+	return db
 		.select()
 		.from(auditLog)
-		.where(and(eq(auditLog.action, 'plan.validate'), inArray(auditLog.subject, plans.map((p) => p.id))))
+		.where(and(eq(auditLog.action, 'plan.validate'), inArray(auditLog.subject, planIds)))
 		.orderBy(desc(auditLog.createdAt), desc(auditLog.id));
+}
+
+/** The latest validation of each plan (see the module note). */
+export async function planChecks(db: DB, plans: Plan[]): Promise<Map<string, PlanCheckView>> {
+	if (plans.length === 0) return new Map();
+	return planChecksFrom(plans, await planValidations(db, plans.map((p) => p.id)));
+}
+
+/** `planChecks` from already-read `planValidations` rows. */
+export function planChecksFrom(plans: Plan[], rows: AuditLog[]): Map<string, PlanCheckView> {
+	const out = new Map<string, PlanCheckView>();
 	for (const p of plans) {
 		const r = rows.find((a) => a.subject === p.id && a.createdAt >= p.updatedAt);
 		if (!r) {
@@ -152,15 +208,17 @@ export async function getProject(db: DB, id: string) {
 }
 
 export async function projectPlans(db: DB, projectId: string) {
-	const plans = await db.select().from(plan).where(eq(plan.projectId, projectId)).orderBy(desc(plan.active), plan.key);
-	const checks = await planChecks(db, plans);
-	const used = plans.length
-		? await db
-				.select({ planId: subscription.planId, n: count() })
-				.from(subscription)
-				.where(inArray(subscription.planId, plans.map((p) => p.id)))
-				.groupBy(subscription.planId)
-		: [];
+	const ids = db.select({ id: plan.id }).from(plan).where(eq(plan.projectId, projectId));
+	const [plans, validations, used] = await db.batch([
+		db.select().from(plan).where(eq(plan.projectId, projectId)).orderBy(desc(plan.active), plan.key),
+		planValidations(db, ids),
+		db
+			.select({ planId: subscription.planId, n: count() })
+			.from(subscription)
+			.where(inArray(subscription.planId, ids))
+			.groupBy(subscription.planId)
+	]);
+	const checks = planChecksFrom(plans, validations);
 	const usedBy = new Map(used.map((u) => [u.planId, u.n]));
 	return plans.map((p) => ({
 		id: p.id,

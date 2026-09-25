@@ -224,6 +224,40 @@ export function loadConfig(env: Env): Config {
 	};
 }
 
+/** The variables `loadConfig` reads: a cached result is reused only while all of them are unchanged. */
+const CONFIG_KEYS = [
+	'BONUM_ENVIRONMENT',
+	'BONUM_APP_SECRET',
+	'BONUM_TERMINAL_ID',
+	'BONUM_CHECKSUM_KEY',
+	'QPAY_ENVIRONMENT',
+	'QPAY_CLIENT_ID',
+	'QPAY_CLIENT_PASSWORD',
+	'QPAY_INVOICE_CODE',
+	'ENCRYPTION_KEY',
+	'ADMIN_PASSWORD',
+	'PUBLIC_ORIGIN',
+	'CF_ACCESS_TEAM_DOMAIN',
+	'CF_ACCESS_AUD'
+] as const satisfies readonly (keyof Env)[];
+
+type Loaded = ReturnType<typeof tryLoadConfig>;
+const loadedByEnv = new WeakMap<Env, { values: (string | undefined)[]; loaded: Loaded }>();
+
+/**
+ * `tryLoadConfig`, parsed once per isolate: the Worker gets the same `env`
+ * object on every request, so hooks reuse the result while every variable is
+ * the same string (13 comparisons instead of a parse and a base64 decode).
+ */
+export function tryLoadConfigCached(env: Env): Loaded {
+	const values = CONFIG_KEYS.map((k) => env[k]);
+	const hit = loadedByEnv.get(env);
+	if (hit && hit.values.every((v, i) => v === values[i])) return hit.loaded;
+	const loaded = tryLoadConfig(env);
+	loadedByEnv.set(env, { values, loaded });
+	return loaded;
+}
+
 /** `loadConfig` without the throw: for places that report rather than refuse (health, cron). */
 export function tryLoadConfig(env: Env): { ok: true; config: Config } | { ok: false; error: ConfigError } {
 	try {

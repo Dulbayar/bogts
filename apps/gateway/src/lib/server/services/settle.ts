@@ -48,15 +48,22 @@ function eventData(inv: Invoice, paidAt?: number, duplicateOf?: string): Invoice
 	};
 }
 
-/** The first-paid other invoice for the same purchase (`samePurchase`), if any. */
-async function firstPaidSibling(ctx: ServiceContext, inv: Invoice): Promise<{ id: string } | undefined> {
-	const rows = await ctx.db
+function paidSiblingsQuery(ctx: ServiceContext, inv: Invoice) {
+	return ctx.db
 		.select()
 		.from(invoiceTable)
 		.where(and(purchaseWhere(inv), eq(invoiceTable.status, 'paid'), ne(invoiceTable.id, inv.id), isNotNull(invoiceTable.paidAt)))
 		.orderBy(asc(invoiceTable.paidAt), asc(invoiceTable.id));
+}
+
+const firstPaidSiblingFrom = (rows: Invoice[], inv: Invoice): { id: string } | undefined => {
 	const row = rows.find((r) => samePurchase(r, inv));
 	return row ? { id: row.id } : undefined;
+};
+
+/** The first-paid other invoice for the same purchase (`samePurchase`), if any. */
+async function firstPaidSibling(ctx: ServiceContext, inv: Invoice): Promise<{ id: string } | undefined> {
+	return firstPaidSiblingFrom(await paidSiblingsQuery(ctx, inv), inv);
 }
 
 async function note(ctx: ServiceContext, inv: Pick<Invoice, 'id' | 'projectId'>, kind: string, summary: string) {
@@ -151,12 +158,16 @@ async function afterSettled(ctx: ServiceContext, inv: Invoice, duplicateOf: stri
 	else await task;
 }
 
-async function ledgerExists(ctx: ServiceContext, provider: Invoice['provider'], providerRef: string) {
-	const [row] = await ctx.db
+function ledgerQuery(ctx: ServiceContext, provider: Invoice['provider'], providerRef: string) {
+	return ctx.db
 		.select({ id: ledger.id })
 		.from(ledger)
 		.where(and(eq(ledger.provider, provider), eq(ledger.providerRef, providerRef)))
 		.limit(1);
+}
+
+async function ledgerExists(ctx: ServiceContext, provider: Invoice['provider'], providerRef: string) {
+	const [row] = await ledgerQuery(ctx, provider, providerRef);
 	return !!row;
 }
 
@@ -167,10 +178,12 @@ export async function settleInvoice(
 ): Promise<SettleResult> {
 	if (!payment.providerRef) throw new Error('settleInvoice: providerRef is required');
 	if (payment.amount !== inv.amount) return 'amount_mismatch';
-	if (await ledgerExists(ctx, inv.provider, payment.providerRef)) return 'duplicate';
+	// Both reads in one round trip.
+	const [recorded, paidSiblings] = await ctx.db.batch([ledgerQuery(ctx, inv.provider, payment.providerRef), paidSiblingsQuery(ctx, inv)]);
+	if (recorded.length > 0) return 'duplicate';
 	const now = nowOf(ctx);
 	const paidAt = payment.paidAt ?? now;
-	const duplicateOf = (await firstPaidSibling(ctx, inv))?.id;
+	const duplicateOf = firstPaidSiblingFrom(paidSiblings, inv)?.id;
 	const { statements } = eventInserts(
 		ctx.db,
 		{

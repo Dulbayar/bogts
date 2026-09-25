@@ -41,10 +41,11 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	if (!p) error(404, { message: `No project with id ${params.id}`, code: 'not_found' });
 	const t = url.searchParams.get('tab');
 	const tab: Tab = (TABS as readonly string[]).includes(t ?? '') ? (t as Tab) : 'general';
-	const [plans, live, deliveries] = await Promise.all([
+	const [plans, live, deliveries, health] = await Promise.all([
 		tab === 'plans' ? projectPlans(locals.db, p.id) : Promise.resolve([]),
 		tab === 'general' ? liveSubscriptionCount(locals.db, p.id) : Promise.resolve(0),
-		tab === 'webhook' ? recentDeliveries(locals.db, p.id) : Promise.resolve([])
+		tab === 'webhook' ? recentDeliveries(locals.db, p.id) : Promise.resolve([]),
+		tab === 'webhook' ? deliveryHealth(locals.db, Date.now(), p.id) : Promise.resolve(null)
 	]);
 	return {
 		tab,
@@ -72,7 +73,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 			lastError: r.delivery.lastError,
 			createdAt: r.delivery.createdAt
 		})),
-		health: tab === 'webhook' ? ((await deliveryHealth(locals.db)).get(p.id) ?? null) : null,
+		health: health?.get(p.id) ?? null,
 		apiBase: `${config.publicOrigin ?? url.origin}/v1`,
 		allowLocal: allowsLocalWebhooks(config),
 		bonumEnvironment: config.bonum?.environment ?? null

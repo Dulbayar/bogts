@@ -1,12 +1,12 @@
 import { adminOnly } from '$lib/server/admin/actions';
-import { cursorFrom } from '$lib/server/admin/common';
-import { chargeCounts, chargeFilterFrom, listCharges } from '$lib/server/admin/charges';
+import { cursorFrom, withScope } from '$lib/server/admin/common';
+import { chargeFilterFrom, chargesPage } from '$lib/server/admin/charges';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, url, parent }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	adminOnly(locals);
-	const { scope } = await parent();
-	const filter = chargeFilterFrom(url, scope);
-	const [page, counts] = await Promise.all([listCharges(locals.db, filter, cursorFrom(url)), chargeCounts(locals.db, filter)]);
-	return { page, counts, filter };
+	return withScope(locals, url, async (scope) => {
+		const filter = chargeFilterFrom(url, scope);
+		return { ...(await chargesPage(locals.db, filter, cursorFrom(url))), filter };
+	});
 };

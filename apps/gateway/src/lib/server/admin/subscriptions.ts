@@ -1,5 +1,5 @@
 /** Dashboard reads for subscriptions. */
-import { asc, count, desc, eq, gt, lt } from 'drizzle-orm';
+import { asc, count, desc, eq, gt, lt, sql } from 'drizzle-orm';
 import type { DB } from '../db';
 import {
 	SUBSCRIPTION_STATUSES,
@@ -11,8 +11,8 @@ import {
 	subscription,
 	type SubscriptionStatus
 } from '../schema';
-import { all, eventsForSubjects, finishPage, PAGE_SIZE, scoped, type Cursor, type Page } from './common';
-import { buildTimeline } from './timeline';
+import { all, finishPage, PAGE_SIZE, scoped, subjectEventsFrom, subjectEventsStatements, type Cursor, type Page } from './common';
+import { timelineFrom, timelineStatements } from './timeline';
 
 export const SUBSCRIPTION_TILES = ['active', 'past_due', 'pending', 'cancelled'] as const;
 
@@ -26,8 +26,8 @@ export function subscriptionFilterFrom(url: URL, projectId: string | null): Subs
 	};
 }
 
-export async function listSubscriptions(db: DB, f: SubscriptionFilter, cursor: Cursor = {}) {
-	const rows = await db
+function listSubscriptionsQuery(db: DB, f: SubscriptionFilter, cursor: Cursor) {
+	return db
 		.select({
 			id: subscription.id,
 			projectId: subscription.projectId,
@@ -56,16 +56,32 @@ export async function listSubscriptions(db: DB, f: SubscriptionFilter, cursor: C
 		)
 		.orderBy(cursor.after ? asc(subscription.id) : desc(subscription.id))
 		.limit(PAGE_SIZE + 1);
-	return finishPage(rows, cursor);
+}
+
+export async function listSubscriptions(db: DB, f: SubscriptionFilter, cursor: Cursor = {}) {
+	return finishPage(await listSubscriptionsQuery(db, f, cursor), cursor);
 }
 export type SubscriptionRow = Awaited<ReturnType<typeof listSubscriptions>> extends Page<infer R> ? R : never;
 
-export async function subscriptionCounts(db: DB, f: SubscriptionFilter): Promise<Record<string, number>> {
-	const rows = await db
+function subscriptionCountsQuery(db: DB, f: SubscriptionFilter) {
+	return db
 		.select({ status: subscription.status, n: count() })
 		.from(subscription)
 		.where(scoped(subscription.projectId, f.projectId))
 		.groupBy(subscription.status);
+}
+
+export async function subscriptionCounts(db: DB, f: SubscriptionFilter): Promise<Record<string, number>> {
+	return subscriptionCountsFrom(await subscriptionCountsQuery(db, f));
+}
+
+/** The subscriptions list and its tiles in one round trip. */
+export async function subscriptionsPage(db: DB, f: SubscriptionFilter, cursor: Cursor = {}) {
+	const [rows, counts] = await db.batch([listSubscriptionsQuery(db, f, cursor), subscriptionCountsQuery(db, f)]);
+	return { page: finishPage(rows, cursor), counts: subscriptionCountsFrom(counts) };
+}
+
+function subscriptionCountsFrom(rows: { status: SubscriptionStatus; n: number }[]): Record<string, number> {
 	const out: Record<string, number> = { all: 0 };
 	for (const r of rows) {
 		out[r.status] = r.n;
@@ -74,45 +90,43 @@ export async function subscriptionCounts(db: DB, f: SubscriptionFilter): Promise
 	return out;
 }
 
+/** The subscription page in one round trip: everything is read by its id (the card history through subqueries). */
 export async function getSubscriptionDetail(db: DB, id: string) {
-	const [row] = await db
-		.select({ subscription, plan, project: { id: project.id, name: project.name } })
-		.from(subscription)
-		.innerJoin(plan, eq(plan.id, subscription.planId))
-		.innerJoin(project, eq(project.id, subscription.projectId))
-		.where(eq(subscription.id, id))
-		.limit(1);
+	const ofSub = (column: typeof subscription.projectId | typeof subscription.customerRef) =>
+		sql`(select ${sql.identifier(column.name)} from ${subscription} where ${subscription.id} = ${id})`;
+	const [[row], cards, payments, charges, eventRows, deliveryRows, ...timelineRows] = await db.batch([
+		db
+			.select({ subscription, plan, project: { id: project.id, name: project.name } })
+			.from(subscription)
+			.innerJoin(plan, eq(plan.id, subscription.planId))
+			.innerJoin(project, eq(project.id, subscription.projectId))
+			.where(eq(subscription.id, id))
+			.limit(1),
+		// Cards this customer has had on this project, newest first (the history).
+		db
+			.select()
+			.from(card)
+			.where(all(eq(card.projectId, ofSub(subscription.projectId)), eq(card.customerRef, ofSub(subscription.customerRef))))
+			.orderBy(desc(card.createdAt))
+			.limit(20),
+		// Payments: renewals and the first charge are ledger rows of kind `subscription`.
+		db.select().from(ledger).where(eq(ledger.subjectId, id)).orderBy(desc(ledger.createdAt)).limit(100),
+		db
+			.select({ id: charge.id, amount: charge.amount, status: charge.status, reference: charge.reference, createdAt: charge.createdAt })
+			.from(charge)
+			.where(eq(charge.subscriptionId, id))
+			.orderBy(desc(charge.id))
+			.limit(50),
+		...subjectEventsStatements(db, [id]),
+		...timelineStatements(db, 'subscription', [id])
+	]);
 	if (!row) return null;
 	const sub = row.subscription;
-
-	// Cards this customer has had on this project, newest first (the history).
-	const cards = await db
-		.select()
-		.from(card)
-		.where(all(eq(card.projectId, sub.projectId), eq(card.customerRef, sub.customerRef)))
-		.orderBy(desc(card.createdAt))
-		.limit(20);
 	const current = cards.find((c) => c.id === sub.cardId) ?? null;
 
-	// Payments: renewals and the first charge are ledger rows of kind `subscription`.
-	const payments = await db
-		.select()
-		.from(ledger)
-		.where(eq(ledger.subjectId, sub.id))
-		.orderBy(desc(ledger.createdAt))
-		.limit(100);
-
-	const charges = await db
-		.select({ id: charge.id, amount: charge.amount, status: charge.status, reference: charge.reference, createdAt: charge.createdAt })
-		.from(charge)
-		.where(eq(charge.subscriptionId, sub.id))
-		.orderBy(desc(charge.id))
-		.limit(50);
-
-	const events = await eventsForSubjects(db, [sub.id]);
-	const timeline = await buildTimeline(db, {
+	const events = subjectEventsFrom([eventRows, deliveryRows]);
+	const timeline = timelineFrom(timelineRows, {
 		subjectType: 'subscription',
-		subjectIds: [sub.id],
 		events,
 		extra: [{ key: 'created', at: sub.createdAt, source: 'gateway', title: 'Subscription started', detail: 'waiting for the card', href: null }]
 	});
