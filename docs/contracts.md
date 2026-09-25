@@ -357,3 +357,11 @@ The request bodies:
 - `services/settle.ts`: `settleInvoice(ctx, inv, payment)`, `endInvoice(ctx, inv, status)`, `cancelSiblings(ctx, paidInvoice)`
 
 Here `ctx` is the `ServiceContext` from `services/context.ts`.
+
+## As built (Bonum failure reasons)
+- A failed Bonum payment's activity summary carries only allowlisted machine
+  fields: the status tokens (`status`, `invoiceStatus`, `cardStatus`), the
+  bank response code `respCode` (digits, at most 3, with a short ISO 8583 meaning
+  when known), and `paymentVendor` (shown only when it's `E_COMMERCE` or
+  `QPAY`). Bonum's free-text `message` is never read. The code is in
+  `providers/bonum/failure.ts`, and event payloads are unchanged.

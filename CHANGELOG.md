@@ -11,6 +11,13 @@ The first release: one Cloudflare Worker for Bonum and QPay.
 
 ### Added
 
+- **Performance**: each dashboard page loads in one or two D1 round trips, and
+  migration `0006_perf_indexes` replaces 13 indexes with ones matched to the
+  queries (see `docs/performance.md`). Apply migrations before deploying.
+- **Bonum failure reasons**: failed payments record Bonum's status and the
+  bank response code (e.g. `51` insufficient funds) in the timeline; Bonum's
+  free-text message is never stored.
+
 - **Gateway** (`apps/gateway`): one deployment per company, many projects,
   each with its own API key, webhook URL, signing secret and plans.
 - **QPay invoices**: a QR, bank-app deeplinks and a hosted page at `/pay/:id`.

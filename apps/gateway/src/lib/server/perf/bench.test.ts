@@ -2,7 +2,7 @@
  * The dashboard's per-page database cost at realistic volume (see seed.ts).
  * Skipped unless BOGTS_BENCH=1:
  *
- *   BOGTS_BENCH=1 pnpm --filter @bogts/gateway exec vitest run src/lib/server/perf/bench.test.ts
+ *   pnpm --filter @bogts/gateway bench
  *
  * (BOGTS_BENCH_RTT, BOGTS_BENCH_RUNS, BOGTS_BENCH_SCALE and BOGTS_BENCH_ONLY tune it.)
  *

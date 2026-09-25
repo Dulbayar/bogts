@@ -17,6 +17,7 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run",
+		"bench": "BOGTS_BENCH=1 vitest run src/lib/server/perf/bench.test.ts",
 		"test:watch": "vitest",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate:local": "wrangler d1 migrations apply DB --local",

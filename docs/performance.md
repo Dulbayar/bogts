@@ -5,7 +5,7 @@ D1 charges latency per round trip and bills by rows read. So each dashboard load
 Measure with the bench, which seeds 5 projects, 20k invoices, 50k events and deliveries, 10k ledger rows, 40k activity rows and 3k subscriptions:
 
 ```sh
-BOGTS_BENCH=1 pnpm --filter @bogts/gateway exec vitest run src/lib/server/perf/bench.test.ts
+pnpm --filter @bogts/gateway bench
 ```
 
 `src/lib/server/perf/roundtrips.test.ts` runs with `pnpm test` and fails if a load goes over its round-trip budget.

@@ -73,7 +73,7 @@ export function describeFailure(body: Record<string, unknown>): string {
 	const f = failureCodes(body);
 	const parts = [...f.statuses];
 	if (f.respCode) parts.push(describeResponseCode(f.respCode));
-	if (f.paymentVendor) parts.push(VENDORS[f.paymentVendor] ?? f.paymentVendor);
+	if (f.paymentVendor && VENDORS[f.paymentVendor]) parts.push(VENDORS[f.paymentVendor]);
 	return parts.length ? `Bonum: ${parts.join(', ')}` : '';
 }
 
