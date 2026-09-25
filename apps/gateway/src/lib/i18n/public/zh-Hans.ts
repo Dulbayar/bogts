@@ -38,6 +38,7 @@ export const zhHans: PublicMessages = {
 	'money.label': '{amount} 图格里克',
 
 	'error.notFound.title': '未找到该付款',
+	'error.pageNotFound.title': '找不到该页面',
 	'error.notFound.body': '请检查链接，或返回后重新开始。',
 	'error.generic.title': '出错了',
 	'error.generic.body': '请稍候再试。',

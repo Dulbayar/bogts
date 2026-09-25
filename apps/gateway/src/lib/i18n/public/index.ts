@@ -41,8 +41,12 @@ export function translator(locale: Locale): Translate {
  * Mongolian uses commas (as bank apps do); pinned, since browsers may lack `mn`.
  */
 export function formatMoneyIn(locale: Locale, amount: number): string {
-	const n = new Intl.NumberFormat(locale === 'mn' ? 'en-US' : locale, { maximumFractionDigits: 2 }).format(Math.abs(amount));
-	return `${amount < 0 ? '−' : ''}₮${n}`;
+	return `${amount < 0 ? '−' : ''}₮${formatAmountIn(locale, Math.abs(amount))}`;
+}
+
+/** The bare number, grouped the language's way (`49,000`), for `money.label`, which names the unit itself. */
+export function formatAmountIn(locale: Locale, amount: number): string {
+	return new Intl.NumberFormat(locale === 'mn' ? 'en-US' : locale, { maximumFractionDigits: 2 }).format(amount);
 }
 
 /**
@@ -68,6 +72,11 @@ export function formatDateTimeIn(locale: Locale, ms: number): string {
 		minute: '2-digit',
 		hourCycle: 'h23'
 	}).format(ms);
+}
+
+/** The 404 title for a URL: a missing invoice (/pay/…, /return/…) is a payment not found; anything else, a page not found. */
+export function notFoundTitleKey(pathname: string): PublicKey {
+	return /^\/(pay|return)\/[^/]/.test(pathname) ? 'error.notFound.title' : 'error.pageNotFound.title';
 }
 
 export type { PublicKey, PublicMessages };

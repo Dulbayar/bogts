@@ -38,6 +38,7 @@ export const en: PublicMessages = {
 	'money.label': '{amount} tugrik',
 
 	'error.notFound.title': 'Payment not found',
+	'error.pageNotFound.title': 'Page not found',
 	'error.notFound.body': 'Check the link, or go back and start again.',
 	'error.generic.title': 'Something went wrong',
 	'error.generic.body': 'Wait a moment and try again.',

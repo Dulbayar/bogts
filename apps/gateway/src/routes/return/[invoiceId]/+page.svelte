@@ -8,7 +8,7 @@
 	import PublicShell from '$lib/components/PublicShell.svelte';
 	import PublicState from '$lib/components/public/PublicState.svelte';
 	import { pollStatus, type PolledStatus } from '$lib/checkout';
-	import { formatDateTimeIn, formatMoneyIn, translator } from '$lib/i18n/public';
+	import { formatAmountIn, formatDateTimeIn, formatMoneyIn, translator } from '$lib/i18n/public';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -53,7 +53,7 @@
 
 <PublicShell {payee} locale={data.locale} {t} sandbox={data.sandbox}>
 	{#snippet summary()}
-		<p class="amount display" aria-label={t('money.label', { amount })}>{amount}</p>
+		<p class="amount display" aria-label={t('money.label', { amount: formatAmountIn(data.locale, inv.amount) })}>{amount}</p>
 		{#if inv.description}<p class="desc">{inv.description}</p>{/if}
 	{/snippet}
 

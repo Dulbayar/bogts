@@ -3,7 +3,7 @@ import { fromAcceptLanguage, matchLocale, pickLocale } from './detect';
 import { en } from './en';
 import { es } from './es';
 import { fr } from './fr';
-import { formatDateTimeIn, formatMoneyIn, LOCALES } from './index';
+import { formatAmountIn, formatDateTimeIn, formatMoneyIn, LOCALES, notFoundTitleKey, translator } from './index';
 import { mn } from './mn';
 import { ru } from './ru';
 import { zhHans } from './zh-Hans';
@@ -69,6 +69,15 @@ describe('pickLocale', () => {
 		expect(pickLocale({ country: 'FR', acceptLanguage: 'fr-FR,fr;q=0.9' }).locale).toBe('fr');
 		expect(pickLocale({ country: 'CN', acceptLanguage: 'zh-CN,zh;q=0.9' }).locale).toBe('zh-Hans');
 	});
+	it('Traditional Chinese with nothing else we speak falls back to English, unless in Mongolia', () => {
+		for (const tag of ['zh-TW', 'zh-HK', 'zh-Hant', 'zh-MO', 'zh-Hant-TW', 'zh_TW', 'zh-TW,zh;q=0']) {
+			expect(pickLocale({ acceptLanguage: tag }).locale, tag).toBe('en');
+		}
+		expect(pickLocale({ country: 'TW', acceptLanguage: 'zh-TW,zh-Hant;q=0.9,ja;q=0.8' }).locale).toBe('en');
+		expect(pickLocale({ acceptLanguage: 'zh-TW,ru;q=0.5' }).locale).toBe('ru');
+		expect(pickLocale({ country: 'MN', acceptLanguage: 'zh-TW' }).locale).toBe('mn');
+		expect(pickLocale({ acceptLanguage: 'zh-TW;q=0, de' }).locale).toBe('mn');
+	});
 	it('falls back to Mongolian', () => {
 		expect(pickLocale({})).toEqual({ locale: 'mn', fromQuery: false });
 		expect(pickLocale({ country: 'DE', acceptLanguage: 'de' }).locale).toBe('mn');
@@ -89,6 +98,26 @@ describe('messages', () => {
 			}
 		}
 		expect(Object.keys(all).sort()).toEqual([...LOCALES].sort());
+	});
+});
+
+describe('formatAmountIn', () => {
+	it('is the bare number, so money.label names the currency once', () => {
+		expect(formatAmountIn('en', 49000)).toBe('49,000');
+		expect(formatAmountIn('mn', 49000)).toBe('49,000');
+		expect(formatAmountIn('ru', 49000)).toMatch(/^49\s000$/u);
+		for (const locale of LOCALES) {
+			const label = translator(locale)('money.label', { amount: formatAmountIn(locale, 49000) });
+			expect(label, locale).not.toContain('₮');
+		}
+	});
+});
+
+describe('notFoundTitleKey', () => {
+	it('says payment for a missing invoice, page for any other URL', () => {
+		expect(notFoundTitleKey('/pay/01J8ZZZZZZZZZZZZZZZZZZZZZZ')).toBe('error.notFound.title');
+		expect(notFoundTitleKey('/return/01J8ZZZZZZZZZZZZZZZZZZZZZZ')).toBe('error.notFound.title');
+		for (const path of ['/', '/nope', '/pay', '/pay/', '/payments/x', '/brand/logo/x']) expect(notFoundTitleKey(path), path).toBe('error.pageNotFound.title');
 	});
 });
 

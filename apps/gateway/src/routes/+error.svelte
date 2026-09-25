@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import PublicShell from '$lib/components/PublicShell.svelte';
 	import PublicState from '$lib/components/public/PublicState.svelte';
-	import { DEFAULT_LOCALE, isLocale, translator } from '$lib/i18n/public';
+	import { DEFAULT_LOCALE, isLocale, notFoundTitleKey, translator } from '$lib/i18n/public';
 
 	type RootData = { locale?: string; brand?: { companyName: string | null; logoUrl: string | null; supportEmail: string | null; supportUrl: string | null } };
 	const root = $derived(page.data as RootData);
@@ -16,10 +16,11 @@
 			: null
 	);
 	const notFound = $derived(page.status === 404);
+	const notFoundTitle = $derived(t(notFoundTitleKey(page.url.pathname)));
 </script>
 
 <svelte:head>
-	<title>{notFound ? t('error.notFound.title') : t('error.generic.title')}</title>
+	<title>{notFound ? notFoundTitle : t('error.generic.title')}</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
@@ -27,7 +28,7 @@
 	{#snippet summary()}
 		<div class="wrap">
 			{#if notFound}
-				<PublicState kind="missing" title={t('error.notFound.title')}>
+				<PublicState kind="missing" title={notFoundTitle}>
 					<p>{t('error.notFound.body')}</p>
 				</PublicState>
 			{:else}
