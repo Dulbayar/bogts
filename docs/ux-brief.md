@@ -65,7 +65,7 @@ Public pages that the gateway itself renders sit outside `/admin`:
 **Sidebar** (240px, fixed, on desktop):
 
 ```
-[G] Bogts            ← instance name (hostname), not a logo upload
+[logo] Company       ← Settings → Branding (logo + name), else the Bogts pouch; hostname under it
 [ All projects        ⌄ ]    ← project switcher (menu + type-to-filter)
 
 Overview                     g o
@@ -855,7 +855,11 @@ Type  cust_8841  [copy] to confirm
 ## 14. Public pages
 
 These are minimal, have no admin chrome, work without JavaScript where
-possible, and load in under 50 KB. The page is neutral (no gege branding).
+possible, and load in under 50 KB (plus the self-hosted fonts). The header
+carries the payee's brand: the project's display name and logo, else the
+company's (Settings → Branding), else the project name. They speak Mongolian
+by default, plus English, French, Russian, Simplified Chinese and Spanish
+(see §15a).
 It shows the project name, because the customer is paying *that* company.
 
 ### 14.1 QPay checkout: `/pay/[invoiceId]`
@@ -927,10 +931,42 @@ Based on the Stripe-hosted return used by Bonsai and Midday.
   identifiers.
 - Leave 30% slack in buttons, badges and tiles. Badges have `white-space:
   nowrap` and a minimum width, not a fixed one.
-- The system font stack covers Cyrillic (and Mongolian Cyrillic `Ө ө Ү ү`)
+- Geologica and Piazzolla (self-hosted, §16a) cover Cyrillic (and Mongolian Cyrillic `Ө ө Ү ү`)
   on every platform.
 
 ---
+
+## 15a. Public page languages (as built)
+
+The dashboard is English only. `/pay`, `/return` and the public error pages
+pick a language in this order: `?lang=` (the picker; remembered in the
+`bogts_lang` cookie), that cookie, Cloudflare's `cf.country === 'MN'` (most
+Mongolian phones are set to English), `Accept-Language`, then Mongolian.
+Strings live in `src/lib/i18n/public/<lang>.ts`; `mn.ts` defines the key set
+and the others are typed against it. Mongolian copy avoids case endings on
+the brand name (`{name}`), so sentences read correctly for any name.
+
+## 16a. Identity and branding (as built, supersedes parts of §16)
+
+- **Type:** Geologica for the interface, Piazzolla for money and titles
+  (the "coin face"). Both are OFL, self-hosted in `static/fonts` (no
+  third-party requests, CSP unchanged) and split by unicode-range.
+- **Accent:** Settings → Branding sets one colour. `lib/brand.ts` derives
+  light and dark variants and checks them for AA (fill 3:1 against the card,
+  label and link text 4.5:1), rendered as `--brand-*-l/-d` on `:root` and
+  mapped in `app.css`. Without one, Bogts' own оюу turquoise `#0e7c7b`.
+  Use `--accent` for fills and `--accent-text` for text.
+- **Mark:** the Bogts coin pouch (`components/brand/BogtsMark.svelte`), shown
+  whenever no company logo is set. Brass (`--brass`) is reserved for the
+  coin: the mark and the paid moment.
+- **Logos:** PNG, SVG or WebP, at most 256 KB, stored in D1 (`brand_logo`,
+  content-addressed) and served from `/brand/logo/<sha256>` with a year-long
+  immutable cache. SVG is sanitised on upload and served sandboxed.
+- **Ornament:** a key-fret (хээ) edge on the public pages and the login card.
+  One motif, used only there.
+- **Bank logos:** the public pay page shows QPay's own bank logos; `img-src`
+  allows exactly `https://qpay.mn` and `https://s3.qpay.mn`, and a logo that
+  fails to load falls back to the bank's initial.
 
 ## 16. Design tokens
 

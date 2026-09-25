@@ -255,6 +255,14 @@ production wrangler config, in a separate private repo and deploy each with
 3. Call the API: see [api.md](api.md) and [webhooks.md](webhooks.md), or use
    [`@gege-mn/bogts`](../packages/client/README.md).
 
+## Branding
+
+Settings → Branding sets the company name, logo (PNG, SVG or WebP, up to
+256 KB, stored in D1), accent colour, and an optional support email and URL
+shown on payment pages. Each project can override the display name and logo
+on its payment pages (project → General → Payment page), for companies that
+run several brands. Every change is recorded in the audit log.
+
 ## Custom domain
 
 Add the domain to your Cloudflare account, then either use **Workers & Pages →
