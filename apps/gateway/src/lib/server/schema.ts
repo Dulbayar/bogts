@@ -75,7 +75,11 @@ export const project = sqliteTable(
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 		/** Archived projects fail API auth; their history stays. Projects are never deleted. */
-		archivedAt: integer('archived_at')
+		archivedAt: integer('archived_at'),
+		/** Public pay pages: the brand name shown to payers instead of the company name (one company, several brands) */
+		displayName: text('display_name'),
+		/** Public pay pages: a `brand_logo.hash` that replaces the company logo for this project */
+		logoHash: text('logo_hash')
 	}
 );
 
@@ -537,6 +541,40 @@ export const activity = sqliteTable(
 	]
 );
 
+/**
+ * The company's branding, one row (`id = 'default'`): shown in the dashboard
+ * and on the public pay pages. Every column is optional; with none set, the
+ * pages use Bogts' own mark and accent.
+ */
+export const branding = sqliteTable('branding', {
+	id: text('id').primaryKey(),
+	companyName: text('company_name'),
+	/** A `brand_logo.hash` */
+	logoHash: text('logo_hash'),
+	/** `#rrggbb`; the pages derive readable light and dark variants from it */
+	accentColor: text('accent_color'),
+	supportEmail: text('support_email'),
+	supportUrl: text('support_url'),
+	updatedAt: integer('updated_at').notNull()
+});
+
+export const LOGO_TYPES = ['image/png', 'image/webp', 'image/svg+xml'] as const;
+export type LogoType = (typeof LOGO_TYPES)[number];
+
+/**
+ * Uploaded logos, content-addressed: the hash is the sha-256 of the stored
+ * bytes (after SVG sanitising), so `/brand/logo/<hash>` can be cached forever.
+ * At most 256 KB each, base64 in D1 (no R2 binding, so the Deploy button keeps working).
+ */
+export const brandLogo = sqliteTable('brand_logo', {
+	hash: text('hash').primaryKey(),
+	contentType: text('content_type', { enum: LOGO_TYPES }).notNull(),
+	/** base64 of the bytes */
+	data: text('data').notNull(),
+	size: integer('size').notNull(),
+	createdAt: integer('created_at').notNull()
+});
+
 /** When each cron job last ran and how it went, for the dashboard's health view. */
 export const cronHeartbeat = sqliteTable('cron_heartbeat', {
 	/** `tick`, `deliver`, `sweep`, `late_check`, `reconcile`, `purge` */
@@ -581,3 +619,5 @@ export type AuditLog = typeof auditLog.$inferSelect;
 export type Activity = typeof activity.$inferSelect;
 export type NewActivity = typeof activity.$inferInsert;
 export type CronHeartbeat = typeof cronHeartbeat.$inferSelect;
+export type Branding = typeof branding.$inferSelect;
+export type BrandLogo = typeof brandLogo.$inferSelect;

@@ -1,29 +1,47 @@
+<!-- The public error page (404 and others), in the payer's language, with the company brand. -->
 <script lang="ts">
 	import { page } from '$app/state';
 	import PublicShell from '$lib/components/PublicShell.svelte';
+	import PublicState from '$lib/components/public/PublicState.svelte';
+	import { DEFAULT_LOCALE, isLocale, translator } from '$lib/i18n/public';
+
+	type RootData = { locale?: string; brand?: { companyName: string | null; logoUrl: string | null; supportEmail: string | null; supportUrl: string | null } };
+	const root = $derived(page.data as RootData);
+	const locale = $derived(isLocale(root.locale) ? root.locale : DEFAULT_LOCALE);
+	const t = $derived(translator(locale));
+	const brand = $derived(root.brand);
+	const payee = $derived(
+		brand?.companyName
+			? { name: brand.companyName, logoUrl: brand.logoUrl, supportEmail: brand.supportEmail, supportUrl: brand.supportUrl }
+			: null
+	);
+	const notFound = $derived(page.status === 404);
 </script>
 
 <svelte:head>
-	<title>{page.status === 404 ? 'Not found' : 'Error'}</title>
+	<title>{notFound ? t('error.notFound.title') : t('error.generic.title')}</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
-<PublicShell>
-	<section class="state">
-		<h1>{page.status === 404 ? (page.error?.message ?? 'Not found') : 'Something went wrong'}</h1>
-		<p class="muted">{page.status === 404 ? 'Check the link, or go back and start again.' : 'Try again in a moment.'}</p>
-	</section>
+<PublicShell {payee} {locale} {t}>
+	{#snippet summary()}
+		<div class="wrap">
+			{#if notFound}
+				<PublicState kind="missing" title={t('error.notFound.title')}>
+					<p>{t('error.notFound.body')}</p>
+				</PublicState>
+			{:else}
+				<PublicState kind="error" title={t('error.generic.title')}>
+					<p>{t('error.generic.body')}</p>
+					<a class="btn lg" href={page.url.pathname} rel="external">{t('error.retry')}</a>
+				</PublicState>
+			{/if}
+		</div>
+	{/snippet}
 </PublicShell>
 
 <style>
-	.state {
-		display: grid;
-		gap: var(--space-2);
-		text-align: center;
-		margin-top: var(--space-12);
-	}
-	h1 {
-		font-size: var(--text-xl);
-		font-weight: var(--weight-semibold);
+	.wrap {
+		padding-top: var(--space-10);
 	}
 </style>

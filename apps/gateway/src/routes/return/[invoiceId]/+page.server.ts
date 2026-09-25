@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { publicInvoice } from '$lib/server/public/invoice-view';
+import { payeeOf } from '$lib/server/public/payee';
 import type { PageServerLoad } from './$types';
 
 /** Where Bonum's hosted checkout sends the payer back. Query params are ignored: only our own status counts. */
@@ -11,6 +12,8 @@ export const load: PageServerLoad = async ({ locals, params, setHeaders }) => {
 	// Only what this page shows: no QR or bank links here.
 	return {
 		invoice: { ...invoice, qr: null, deeplinks: [] },
+		brand: invoice.brand,
+		payee: payeeOf(invoice, invoice.brand),
 		sandbox: env === 'test'
 	};
 };

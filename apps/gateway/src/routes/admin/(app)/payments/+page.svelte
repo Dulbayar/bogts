@@ -99,7 +99,7 @@
 						<td><StatusBadge status={invoiceStatus(r.status)} /></td>
 						<td class="hide-md"><ProviderTag provider={r.provider} test={sandbox.has(r.provider)} /></td>
 						<td class="mono" title={r.reference}>{truncateEnd(r.reference)}</td>
-						<td class="hide-md muted" title={r.description}>{r.description}</td>
+						<td class="hide-md muted clip" title={r.description}>{r.description}</td>
 						{#if showProject}<td class="hide-md">{r.projectName}</td>{/if}
 						<td class="right muted"><Time at={r.createdAt} /></td>
 						<td class="right muted hide-md">

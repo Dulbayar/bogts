@@ -14,8 +14,8 @@
 	};
 </script>
 
-<span class="badge {status.tone}"
-	><Icon name={GLYPH[status.tone]} size={12} />{status.label}{#if suffix}<span class="suffix">{suffix}</span>{/if}</span
+<span class="badge {status.tone}" class:live={status.glyph === 'live'}
+	><Icon name={status.glyph ?? GLYPH[status.tone]} size={12} />{status.label}{#if suffix}<span class="suffix">{suffix}</span>{/if}</span
 >
 
 <style>
@@ -57,6 +57,26 @@
 	}
 	.muted {
 		color: var(--fg-subtle);
+	}
+	/* A live environment: the dot breathes once in a while. */
+	.live :global(.icon) {
+		border-radius: 50%;
+		animation: breathe 2.8s var(--ease) infinite;
+	}
+	@keyframes breathe {
+		0%,
+		60%,
+		100% {
+			box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 35%, transparent);
+		}
+		30% {
+			box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, transparent);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.live :global(.icon) {
+			animation: none;
+		}
 	}
 	.suffix {
 		opacity: 0.8;

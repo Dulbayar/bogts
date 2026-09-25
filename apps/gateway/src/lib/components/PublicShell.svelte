@@ -1,18 +1,94 @@
-<!-- The frame of the public pages: neutral, no admin chrome, sandbox strip when testing. -->
+<!--
+	The frame of the public pages (/pay, /return, errors): no admin chrome.
+	Reading order: the brand (logo, name), the summary (amount as the hero,
+	description), then the action (QR and banks, or a state), then help and
+	the "secure payment" line.
+
+	Phones: one column; the summary sits on an accent-tinted band edged with
+	a хээ (key-fret) border. From 880px: Stripe-style split, summary on the
+	left, action on the right.
+-->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import type { Locale, Translate } from '$lib/i18n/public';
+	import BogtsMark from './brand/BogtsMark.svelte';
+	import BrandLogo from './brand/BrandLogo.svelte';
+	import Icon from './Icon.svelte';
+	import LangPicker from './public/LangPicker.svelte';
 
-	let { sandbox = false, children, footer }: { sandbox?: boolean; children: Snippet; footer?: Snippet } = $props();
+	type Payee = { name: string; logoUrl: string | null; supportEmail: string | null; supportUrl: string | null };
+
+	let {
+		payee,
+		locale,
+		t,
+		sandbox = false,
+		summary,
+		action,
+		note
+	}: {
+		payee: Payee | null;
+		locale: Locale;
+		t: Translate;
+		sandbox?: boolean;
+		summary?: Snippet;
+		action?: Snippet;
+		/** A small line under the footer (the invoice id) */
+		note?: Snippet;
+	} = $props();
+
+	const hasSupport = $derived(!!(payee?.supportEmail || payee?.supportUrl));
 </script>
 
-<div class="public">
-	{#if sandbox}<div class="strip" role="status">Test payment: no real money</div>{/if}
-	<main>{@render children()}</main>
-	{#if footer}<footer>{@render footer()}</footer>{/if}
+<div class="public" class:split={!!action && !!summary}>
+	{#if sandbox}<div class="strip" role="status"><Icon name="flask" size={14} /> {t('sandbox')}</div>{/if}
+	<div class="frame">
+		<header class="brand">
+			{#if payee}
+				<BrandLogo src={payee.logoUrl} name={payee.name} size={36} />
+				<span class="payee">{payee.name}</span>
+			{:else}
+				<span class="mark"><BogtsMark size={28} /></span>
+				<span class="payee">Bogts</span>
+			{/if}
+			<span class="grow"></span>
+			<LangPicker {locale} label={t('lang.label')} />
+		</header>
+
+		{#if summary}
+			<section class="summary">{@render summary()}</section>
+		{/if}
+
+		{#if action}
+			<section class="action">{@render action()}</section>
+		{/if}
+
+		<footer class="foot">
+			{#if hasSupport && payee}
+				<p class="support">
+					<span class="subtle">{t('support.label')}:</span>
+					{#if payee.supportEmail}<a href="mailto:{payee.supportEmail}"><Icon name="mail" size={14} /> {payee.supportEmail}</a>{/if}
+					{#if payee.supportUrl}<a href={payee.supportUrl} rel="external noreferrer noopener" target="_blank"
+							><Icon name="help" size={14} /> {t('support.site')}</a
+						>{/if}
+				</p>
+			{/if}
+			<p class="secured">
+				<Icon name="lock" size={12} />
+				<span>{t('footer.secured')}</span>
+				<span class="dot" aria-hidden="true"></span>
+				<span class="by"><BogtsMark size={14} /> Bogts</span>
+			</p>
+			{#if note}<p class="note">{@render note()}</p>{/if}
+		</footer>
+	</div>
 </div>
 
 <style>
 	.public {
+		--fret-v: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='16' viewBox='0 0 10 16'%3E%3Cpath d='M.75 0v16M.75 12.25h8.5v-8.5h-5v5h2' fill='none' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E");
+		--band: color-mix(in srgb, var(--accent-subtle) 85%, var(--bg-subtle));
+		--fret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='10' viewBox='0 0 16 10'%3E%3Cpath d='M0 9.25h16M12.25 9.25V.75h-8.5v5h5v-2' fill='none' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E");
 		min-height: 100vh;
 		min-height: 100dvh;
 		display: flex;
@@ -21,31 +97,203 @@
 		color: var(--fg);
 	}
 	.strip {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
 		padding: 6px var(--space-4);
 		background: var(--sandbox-bg);
 		color: var(--sandbox-fg);
 		font-size: var(--text-sm);
+		font-weight: var(--weight-medium);
 		text-align: center;
 	}
-	main {
+
+	/* One column (phones, and pages without an action) */
+	.frame {
 		flex: 1;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas: 'brand' 'summary' 'action' 'foot';
+		grid-template-rows: auto auto auto 1fr;
 		width: 100%;
-		max-width: 420px;
+	}
+	.brand,
+	.summary,
+	.action,
+	.foot {
+		width: 100%;
+		max-width: 480px;
 		margin: 0 auto;
-		padding: var(--space-8) var(--space-4) var(--space-6);
+		padding-left: var(--space-4);
+		padding-right: var(--space-4);
+	}
+	.brand {
+		grid-area: brand;
 		display: flex;
-		flex-direction: column;
-		gap: var(--space-6);
+		align-items: center;
+		gap: var(--space-3);
+		padding-top: var(--space-4);
+		padding-bottom: var(--space-4);
+		min-width: 0;
 	}
-	footer {
-		padding: var(--space-4);
-		text-align: center;
-		font-size: var(--text-xs);
+	.payee {
+		font-weight: var(--weight-semibold);
+		font-size: var(--text-lg);
+		line-height: 1.25;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.mark {
+		display: inline-grid;
+		place-items: center;
+		width: 36px;
+		height: 36px;
+		border-radius: 10px;
+		background: var(--accent);
+		color: var(--fg-on-accent);
+	}
+	.grow {
+		flex: 1;
+	}
+	.summary {
+		grid-area: summary;
+		padding-top: var(--space-2);
+		padding-bottom: var(--space-8);
+	}
+	.action {
+		grid-area: action;
+		padding-top: var(--space-6);
+		padding-bottom: var(--space-6);
+	}
+	.foot {
+		grid-area: foot;
+		align-self: end;
+		display: grid;
+		gap: var(--space-2);
+		padding-top: var(--space-6);
+		padding-bottom: var(--space-6);
+		font-size: var(--text-sm);
 		color: var(--fg-subtle);
+		text-align: center;
 	}
-	@media (max-width: 639px) {
-		main {
-			padding-top: var(--space-6);
+	.support {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-wrap: wrap;
+		gap: 4px var(--space-3);
+	}
+	.support a {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-height: 44px;
+		overflow-wrap: anywhere;
+	}
+	.secured {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		font-size: var(--text-xs);
+	}
+	.by {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-weight: var(--weight-medium);
+		color: var(--fg-muted);
+	}
+	.by :global(.bogts-mark) {
+		color: var(--accent);
+	}
+	.dot {
+		width: 3px;
+		height: 3px;
+		border-radius: 50%;
+		background: currentColor;
+	}
+	.note {
+		font-size: var(--text-xs);
+	}
+
+	/* Phones: the brand and summary sit on a tinted band with a key-fret edge. */
+	.split .brand,
+	.split .summary {
+		background: var(--band);
+		max-width: none;
+		padding-left: max(var(--space-4), calc(50% - 240px + var(--space-4)));
+		padding-right: max(var(--space-4), calc(50% - 240px + var(--space-4)));
+	}
+	.split .summary {
+		position: relative;
+	}
+	.split .summary::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 10px;
+		background: var(--accent);
+		opacity: 0.32;
+		mask: var(--fret) repeat-x left bottom / 16px 10px;
+		-webkit-mask: var(--fret) repeat-x left bottom / 16px 10px;
+	}
+
+	@media (min-width: 880px) {
+		.split .frame {
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+			grid-template-areas: 'brand action' 'summary action' 'foot action';
+			grid-template-rows: auto auto 1fr;
+			background: linear-gradient(90deg, var(--band) 50%, var(--bg) 50%);
+		}
+		.split .brand,
+		.split .summary,
+		.split .foot {
+			max-width: none;
+			background: none;
+			padding-left: max(var(--space-8), calc(100% - 440px - var(--space-12)));
+			padding-right: var(--space-12);
+		}
+		.split .brand {
+			padding-top: var(--space-12);
+		}
+		.split .summary {
+			padding-top: var(--space-10);
+		}
+		.split .summary::after {
+			display: none;
+		}
+		.split .foot {
+			align-self: start;
+			text-align: left;
+			padding-top: 0;
+			padding-bottom: var(--space-10);
+		}
+		.split .support,
+		.split .secured {
+			justify-content: flex-start;
+		}
+		.split .action {
+			position: relative;
+			max-width: none;
+			margin: 0;
+			padding: var(--space-12) max(var(--space-8), calc(100% - 440px - var(--space-12))) var(--space-10) var(--space-12);
+		}
+		/* The key-fret runs down the seam between the halves. */
+		.split .action::before {
+			content: '';
+			position: absolute;
+			left: 0;
+			top: 0;
+			bottom: 0;
+			width: 10px;
+			background: var(--accent);
+			opacity: 0.3;
+			mask: var(--fret-v) repeat-y left top / 10px 16px;
+			-webkit-mask: var(--fret-v) repeat-y left top / 10px 16px;
 		}
 	}
 </style>

@@ -14,15 +14,18 @@ export default defineConfig({
 			// whatever `main` it is given). `vite dev` still reads wrangler.jsonc for
 			// bindings; the platform proxy does not look at `config`.
 			adapter: adapter({ config: 'wrangler.build.jsonc' }),
-			// The dashboard loads nothing from elsewhere. SvelteKit adds hashes for
-			// its own inline bootstrap script.
+			// Pages load nothing from elsewhere except QPay's bank logos (the
+			// `logo` of each deeplink QPay returns; the hosts seen in stored
+			// deeplinks are qpay.mn and s3.qpay.mn, and invoice-view.ts drops any
+			// other host). Fonts are self-hosted. SvelteKit adds hashes for its
+			// own inline bootstrap script.
 			csp: {
 				mode: 'hash',
 				directives: {
 					'default-src': ['self'],
 					'script-src': ['self'],
 					'style-src': ['self', 'unsafe-inline'],
-					'img-src': ['self', 'data:'],
+					'img-src': ['self', 'data:', 'https://qpay.mn', 'https://s3.qpay.mn'],
 					'connect-src': ['self'],
 					'font-src': ['self'],
 					'object-src': ['none'],
