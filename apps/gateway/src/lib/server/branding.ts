@@ -3,10 +3,10 @@
  * public pay pages. Logos are content-addressed rows in `brand_logo`, served
  * by `/brand/logo/<hash>` with a year-long cache.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 import { ApiError } from './api/errors';
 import type { DB } from './db';
-import { normalizeHex } from '../brand';
+import { isPlainEmail, normalizeHex } from '../brand';
 import { brandLogo, branding, project, type Branding, type LogoType } from './schema';
 import { sanitizeSvg, skipProlog } from './svg';
 
@@ -92,8 +92,6 @@ export function clearBrandingCache(): void {
  * Input
  * ------------------------------------------------------------------ */
 
-const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
-
 export type BrandInput = {
 	companyName: string | null;
 	accentColor: string | null;
@@ -112,7 +110,7 @@ export function parseBrandInput(form: FormData): BrandInput {
 	if (rawAccent && !accentColor) throw new ApiError(400, 'invalid_request', 'Accent colour: use a hex colour such as #0e7c7b');
 
 	const supportEmail = text('supportEmail');
-	if (supportEmail && (supportEmail.length > 254 || !EMAIL.test(supportEmail)))
+	if (supportEmail && !isPlainEmail(supportEmail))
 		throw new ApiError(400, 'invalid_request', 'Support email: enter an address such as help@example.mn');
 
 	const supportUrl = text('supportUrl');
@@ -178,12 +176,16 @@ export async function prepareLogo(file: File): Promise<{ type: LogoType; bytes: 
 	return { type, bytes, hash: await sha256Hex(bytes) };
 }
 
-/** Stores a prepared logo (a no-op when the same bytes are already stored). */
+/**
+ * Stores a prepared logo. The same bytes already stored only get a fresh
+ * `createdAt`, so the orphan sweep's grace period covers the save that follows.
+ * Call it only once every other field of the form has been validated.
+ */
 export async function storeLogo(db: DB, logo: { type: LogoType; bytes: Uint8Array; hash: string }, now = Date.now()): Promise<string> {
 	await db
 		.insert(brandLogo)
 		.values({ hash: logo.hash, contentType: logo.type, data: toBase64(logo.bytes), size: logo.bytes.length, createdAt: now })
-		.onConflictDoNothing();
+		.onConflictDoUpdate({ target: brandLogo.hash, set: { createdAt: now } });
 	return logo.hash;
 }
 
@@ -197,6 +199,26 @@ export async function readLogo(db: DB, hash: string): Promise<{ type: LogoType; 
 export async function dropLogoIfUnused(db: DB, hash: string | null | undefined): Promise<void> {
 	if (!hash || (await logoInUse(db, hash))) return;
 	await db.delete(brandLogo).where(eq(brandLogo.hash, hash));
+}
+
+/** How long a stored logo may wait for the save that points at it before the sweep may drop it. */
+export const ORPHAN_GRACE_MS = 10 * 60_000;
+
+/**
+ * Deletes every logo nothing points at (not the company brand, not any
+ * project), except ones stored in the last ORPHAN_GRACE_MS: a concurrent save
+ * may be about to point at those. Cheap: one statement, run after each save.
+ */
+export async function dropOrphanLogos(db: DB, now = Date.now()): Promise<void> {
+	await db
+		.delete(brandLogo)
+		.where(
+			and(
+				lt(brandLogo.createdAt, now - ORPHAN_GRACE_MS),
+				sql`${brandLogo.hash} not in (select ${branding.logoHash} from ${branding} where ${branding.logoHash} is not null)`,
+				sql`${brandLogo.hash} not in (select ${project.logoHash} from ${project} where ${project.logoHash} is not null)`
+			)
+		);
 }
 
 /* ------------------------------------------------------------------ *
@@ -226,15 +248,22 @@ export async function saveBranding(
 }
 
 /** A project's public-page override: its display name and logo (`undefined` keeps the logo). */
+/** A project's display name from its form, validated. Throws a 400 ApiError. */
+export function parseDisplayName(form: FormData): string | null {
+	const displayName = String(form.get('displayName') ?? '').trim() || null;
+	if (displayName && displayName.length > 80) throw new ApiError(400, 'invalid_request', 'Display name: 80 characters at most');
+	return displayName;
+}
+
 export async function saveProjectBrand(
 	db: DB,
 	projectId: string,
 	input: { displayName: string | null; logo: string | null | undefined },
 	now = Date.now()
 ): Promise<{ previousLogo: string | null }> {
+	if (input.displayName && input.displayName.length > 80) throw new ApiError(400, 'invalid_request', 'Display name: 80 characters at most');
 	const [row] = await db.select({ logoHash: project.logoHash }).from(project).where(eq(project.id, projectId)).limit(1);
 	if (!row) throw new ApiError(404, 'not_found', 'Project not found');
-	if (input.displayName && input.displayName.length > 80) throw new ApiError(400, 'invalid_request', 'Display name: 80 characters at most');
 	const set: { displayName: string | null; updatedAt: number; logoHash?: string | null } = { displayName: input.displayName, updatedAt: now };
 	if (input.logo !== undefined) set.logoHash = input.logo;
 	await db.update(project).set(set).where(eq(project.id, projectId));

@@ -34,6 +34,19 @@ export function normalizeHex(input: string | null | undefined): string | null {
 	return HEX.test(s) ? s : null;
 }
 
+/**
+ * A plain email address: no `?`, `&`, `%`, spaces or anything else that
+ * would add headers or a body to a `mailto:` link.
+ */
+const PLAIN_EMAIL = /^[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+
+export const isPlainEmail = (email: string): boolean => email.length <= 254 && PLAIN_EMAIL.test(email);
+
+/** `mailto:` for a plain address (percent-encoded all the same), or null for anything else. */
+export function mailtoHref(email: string | null | undefined): string | null {
+	return email && isPlainEmail(email) ? `mailto:${encodeURIComponent(email).replace(/%40/g, '@')}` : null;
+}
+
 type RGB = [number, number, number];
 
 function rgb(hex: string): RGB {

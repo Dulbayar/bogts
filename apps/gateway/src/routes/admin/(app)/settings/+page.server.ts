@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { adminContext, adminOnly, failFrom } from '$lib/server/admin/actions';
 import { recordAudit } from '$lib/server/audit';
-import { dropLogoIfUnused, fileFrom, parseBrandInput, prepareLogo, saveBranding, storeLogo } from '$lib/server/branding';
+import { dropLogoIfUnused, dropOrphanLogos, fileFrom, parseBrandInput, prepareLogo, saveBranding, storeLogo } from '$lib/server/branding';
 import { callbackUrls, cronStatus, providerHealth } from '$lib/server/admin/health';
 import { THEME_COOKIE } from '$lib/server/admin/prefs';
 import { requireConfig } from '$lib/server/locals';
@@ -39,12 +39,15 @@ export const actions: Actions = {
 		let logo: string | null | undefined;
 		let input: ReturnType<typeof parseBrandInput>;
 		try {
+			// Every field (the logo file included) is checked before anything is stored.
 			input = parseBrandInput(form);
 			const file = fileFrom(form, 'logo');
-			if (file) logo = await storeLogo(locals.db, await prepareLogo(file));
+			const prepared = file ? await prepareLogo(file) : null;
+			if (prepared) logo = await storeLogo(locals.db, prepared);
 			else if (form.get('removeLogo') === '1') logo = null;
 			const { previousLogo } = await saveBranding(locals.db, input, logo);
 			if (logo !== undefined && previousLogo !== logo) await dropLogoIfUnused(locals.db, previousLogo);
+			await dropOrphanLogos(locals.db).catch((err) => console.error('[branding] orphan sweep failed', err instanceof Error ? err.name : typeof err));
 		} catch (err) {
 			const f = failFrom(err, 'branding');
 			return fail(f.status, { ...f.data, values: echo });
