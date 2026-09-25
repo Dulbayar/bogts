@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import EnvBanner from '$lib/components/EnvBanner.svelte';
 	import Toaster from '$lib/components/Toaster.svelte';
 	import { palette } from '$lib/brand';
@@ -12,7 +13,8 @@
 
 	const sandbox = $derived(data.env.mode === 'sandbox' || data.env.mode === 'mixed');
 	// The company logo, else the Bogts pouch in the accent; an amber dot in sandbox (ux-brief §11).
-	const favicon = $derived(data.brand.logoUrl && !sandbox ? data.brand.logoUrl : faviconSvg(palette(data.brand.accent).light.accent, sandbox));
+	const brand = $derived((page.data as { brand?: typeof data.brand }).brand ?? data.brand);
+	const favicon = $derived(brand.logoUrl && !sandbox ? brand.logoUrl : faviconSvg(palette(brand.accent).light.accent, sandbox));
 
 	onMount(startClock);
 </script>

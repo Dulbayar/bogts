@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 import { ApiError } from './api/errors';
 import type { DB } from './db';
 import { normalizeHex } from '../brand';
-import { brandLogo, branding, project, type LogoType } from './schema';
+import { brandLogo, branding, project, type Branding, type LogoType } from './schema';
 
 export const BRANDING_ID = 'default';
 export const LOGO_MAX_BYTES = 256 * 1024;
@@ -35,23 +35,54 @@ export const EMPTY_BRAND: BrandView = {
 export const logoUrl = (hash: string | null | undefined) => (hash && HASH.test(hash) ? `/brand/logo/${hash}` : null);
 export const isLogoHash = (hash: string) => HASH.test(hash);
 
+/** The branding row's select, for a caller's `db.batch` (zero extra round trips). */
+export function brandingStatement(db: DB) {
+	return db.select().from(branding).where(eq(branding.id, BRANDING_ID)).limit(1);
+}
+
+/** The view of a branding row (or of none). */
+export function brandView(row: Branding | null | undefined): BrandView {
+	if (!row) return EMPTY_BRAND;
+	return {
+		companyName: row.companyName,
+		logoUrl: logoUrl(row.logoHash),
+		logoHash: row.logoHash,
+		accent: normalizeHex(row.accentColor),
+		supportEmail: row.supportEmail,
+		supportUrl: row.supportUrl
+	};
+}
+
 /** The company branding; the empty brand when none is saved (or the table is missing on an old database). */
 export async function getBranding(db: DB): Promise<BrandView> {
 	try {
-		const [row] = await db.select().from(branding).where(eq(branding.id, BRANDING_ID)).limit(1);
-		if (!row) return EMPTY_BRAND;
-		return {
-			companyName: row.companyName,
-			logoUrl: logoUrl(row.logoHash),
-			logoHash: row.logoHash,
-			accent: normalizeHex(row.accentColor),
-			supportEmail: row.supportEmail,
-			supportUrl: row.supportUrl
-		};
+		const [row] = await brandingStatement(db);
+		return brandView(row);
 	} catch (err) {
 		console.error('[branding] read failed', err instanceof Error ? err.name : typeof err);
 		return EMPTY_BRAND;
 	}
+}
+
+/*
+ * Per-isolate cache for pages outside the dashboard's batched loads (login,
+ * public error pages): branding changes rarely, so a read at most once a
+ * minute per isolate. A save clears it in the isolate that saved; others
+ * catch up within CACHE_MS. The dashboard itself reads it fresh in its
+ * layout batch, and the pay pages join it into their invoice query.
+ */
+const CACHE_MS = 60_000;
+let cached: { at: number; view: BrandView } | null = null;
+
+export async function getBrandingCached(db: DB, now = Date.now()): Promise<BrandView> {
+	if (cached && now - cached.at < CACHE_MS) return cached.view;
+	const view = await getBranding(db);
+	cached = { at: now, view };
+	return view;
+}
+
+export function clearBrandingCache(): void {
+	cached = null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -219,6 +250,7 @@ export async function saveBranding(
 		.insert(branding)
 		.values({ id: BRANDING_ID, ...values })
 		.onConflictDoUpdate({ target: branding.id, set: values });
+	clearBrandingCache();
 	return { previousLogo };
 }
 

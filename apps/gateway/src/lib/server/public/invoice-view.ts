@@ -7,8 +7,8 @@
 import { eq } from 'drizzle-orm';
 import qrcode from 'qrcode-generator';
 import type { DB } from '../db';
-import { logoUrl } from '../branding';
-import { invoice, project, type Deeplink } from '../schema';
+import { BRANDING_ID, brandView, logoUrl, type BrandView } from '../branding';
+import { branding, invoice, project, type Deeplink } from '../schema';
 
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
@@ -19,6 +19,8 @@ export type PublicInvoice = {
 	/** The project's own public brand (Settings → project → Public page), when set */
 	projectDisplayName: string | null;
 	projectLogoUrl: string | null;
+	/** The company branding, read in the same query */
+	brand: BrandView;
 	amount: number;
 	description: string;
 	/** `pending | paid | expired | failed | cancelled`, with a pending invoice past its expiry reported as expired */
@@ -97,9 +99,10 @@ const BASE64_PNG = /^[A-Za-z0-9+/=\s]+$/;
 export async function publicInvoice(db: DB, id: string, now = Date.now()): Promise<PublicInvoice | null> {
 	if (!ULID.test(id)) return null;
 	const [row] = await db
-		.select({ invoice, projectName: project.name, projectDisplayName: project.displayName, projectLogoHash: project.logoHash })
+		.select({ invoice, projectName: project.name, projectDisplayName: project.displayName, projectLogoHash: project.logoHash, branding })
 		.from(invoice)
 		.innerJoin(project, eq(project.id, invoice.projectId))
+		.leftJoin(branding, eq(branding.id, BRANDING_ID))
 		.where(eq(invoice.id, id))
 		.limit(1);
 	if (!row) return null;
@@ -116,6 +119,7 @@ export async function publicInvoice(db: DB, id: string, now = Date.now()): Promi
 		projectName: row.projectName,
 		projectDisplayName: row.projectDisplayName?.trim() || null,
 		projectLogoUrl: logoUrl(row.projectLogoHash),
+		brand: brandView(row.branding),
 		amount: inv.amount,
 		description: inv.description,
 		status,

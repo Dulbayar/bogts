@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { ApiError } from './api/errors';
 import {
+	brandingStatement,
+	clearBrandingCache,
 	dropLogoIfUnused,
 	EMPTY_BRAND,
 	getBranding,
+	getBrandingCached,
 	parseBrandInput,
 	prepareLogo,
 	readLogo,
@@ -15,7 +18,10 @@ import {
 	storeLogo
 } from './branding';
 import { brandLogo, project } from './schema';
-import { createTestDb, seedProject, type TestDb } from './testdb';
+import { countQueries, createTestDb, seedProject, type TestDb } from './testdb';
+import { newId } from './ids';
+import { invoice } from './schema';
+import { publicInvoice } from './public/invoice-view';
 import { payeeOf } from './public/payee';
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 73, 72, 68, 82]);
@@ -166,5 +172,33 @@ describe('payeeOf', () => {
 		});
 		expect(payeeOf({ projectName: 'nomad-prod', projectDisplayName: null, projectLogoUrl: null }, brand)).toMatchObject({ name: 'Номин ХХК', logoUrl: '/brand/logo/a' });
 		expect(payeeOf({ projectName: 'nomad-prod', projectDisplayName: null, projectLogoUrl: null }, EMPTY_BRAND)).toMatchObject({ name: 'nomad-prod', logoUrl: null });
+	});
+});
+
+describe('branding round trips', () => {
+	it('rides in a batch, is cached per isolate, and joins into the public invoice query', async () => {
+		const { project: p } = await seedProject(db, { name: 'Nomad Coffee' });
+		await saveBranding(db, { companyName: 'Номин', accentColor: '#015197', supportEmail: 'help@nomin.mn', supportUrl: null }, undefined);
+		const stats = countQueries(db);
+
+		stats.reset();
+		const [[row]] = await db.batch([brandingStatement(db)]);
+		expect(row?.companyName).toBe('Номин');
+		expect(stats.roundTrips).toBe(1);
+
+		clearBrandingCache();
+		stats.reset();
+		await getBrandingCached(db, 1_000);
+		await getBrandingCached(db, 30_000);
+		expect(stats.roundTrips).toBe(1);
+		await getBrandingCached(db, 70_000);
+		expect(stats.roundTrips).toBe(2);
+
+		const id = newId();
+		await db.insert(invoice).values({ id, projectId: p.id, provider: 'qpay', amount: 1000, reference: 'r', description: 'd', expiresAt: Date.now() + 60_000, createdAt: 1, updatedAt: 1 });
+		stats.reset();
+		const v = await publicInvoice(db, id);
+		expect(stats.roundTrips).toBe(1);
+		expect(v!.brand).toMatchObject({ companyName: 'Номин', accent: '#015197', supportEmail: 'help@nomin.mn' });
 	});
 });
