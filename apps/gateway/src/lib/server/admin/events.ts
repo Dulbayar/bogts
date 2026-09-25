@@ -1,6 +1,6 @@
 /** Dashboard reads for emitted events and their webhook deliveries. */
 import { and, asc, count, desc, eq, gt, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
-import type { DB } from '../db';
+import { batchSelect, leftJoined, type DB } from '../db';
 import { eventJson } from '../events/public';
 import { delivery, deliveryAttempt, event, project } from '../schema';
 import {
@@ -66,7 +66,7 @@ const amountOf = (data: Record<string, unknown>): number | null => (typeof data.
 
 function listEventsQuery(db: DB, f: EventFilter, cursor: Cursor) {
 	return db
-		.select({ event, delivery, projectName: project.name })
+		.select(batchSelect({ event, delivery, projectName: project.name }))
 		.from(event)
 		.innerJoin(project, eq(project.id, event.projectId))
 		.leftJoin(delivery, latestDeliveryJoin)
@@ -94,7 +94,7 @@ function listEventsFrom(rows: Awaited<ReturnType<typeof listEventsQuery>>, curso
 			projectId: r.event.projectId,
 			projectName: r.projectName,
 			createdAt: r.event.createdAt,
-			delivery: summarizeDelivery(r.delivery)
+			delivery: summarizeDelivery(leftJoined(r.delivery, 'id'))
 		})),
 		cursor
 	);
@@ -120,7 +120,7 @@ function eventCountsStatements(db: DB, f: EventFilter) {
 		db.select({ n: count() }).from(event).where(scoped(event.projectId, f.projectId)),
 		db.select({ n: sql<number>`count(distinct ${delivery.eventId})` }).from(delivery).where(scope),
 		db
-			.select({ unsettled: count(), retrying: sumIf(stateCond('retrying')), failed: sumIf(stateCond('failed')) })
+			.select(batchSelect({ unsettled: count(), retrying: sumIf(stateCond('retrying')), failed: sumIf(stateCond('failed')) }))
 			.from(delivery)
 			.where(all(inArray(delivery.status, ['pending', 'failed']), isLatestDelivery, scope))
 	] as const;
@@ -187,7 +187,7 @@ function attemptsQuery(db: DB, eventId: string) {
 export async function getEventDetail(db: DB, id: string) {
 	const [[row], deliveries, attemptRows] = await db.batch([
 		db
-			.select({ event, project: { id: project.id, name: project.name, webhookUrl: project.webhookUrl } })
+			.select(batchSelect({ event, project: { id: project.id, name: project.name, webhookUrl: project.webhookUrl } }))
 			.from(event)
 			.innerJoin(project, eq(project.id, event.projectId))
 			.where(eq(event.id, id))

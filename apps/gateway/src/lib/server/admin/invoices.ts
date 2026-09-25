@@ -1,6 +1,6 @@
 /** Dashboard reads for payments (invoices). */
 import { asc, count, desc, eq, gt, lt } from 'drizzle-orm';
-import type { DB } from '../db';
+import { batchSelect, type DB } from '../db';
 import { INVOICE_STATUSES, PROVIDERS, invoice, project, type InvoiceStatus, type Provider } from '../schema';
 import { all, finishPage, PAGE_SIZE, scoped, subjectEventsFrom, subjectEventsStatements, type Cursor, type Page } from './common';
 import { timelineFrom, timelineStatements, type TimelineEntry } from './timeline';
@@ -44,19 +44,21 @@ export type InvoiceRow = {
 
 function listInvoicesQuery(db: DB, f: InvoiceFilter, cursor: Cursor) {
 	return db
-		.select({
-			id: invoice.id,
-			projectId: invoice.projectId,
-			projectName: project.name,
-			provider: invoice.provider,
-			amount: invoice.amount,
-			status: invoice.status,
-			reference: invoice.reference,
-			description: invoice.description,
-			createdAt: invoice.createdAt,
-			paidAt: invoice.paidAt,
-			expiresAt: invoice.expiresAt
-		})
+		.select(
+			batchSelect({
+				id: invoice.id,
+				projectId: invoice.projectId,
+				projectName: project.name,
+				provider: invoice.provider,
+				amount: invoice.amount,
+				status: invoice.status,
+				reference: invoice.reference,
+				description: invoice.description,
+				createdAt: invoice.createdAt,
+				paidAt: invoice.paidAt,
+				expiresAt: invoice.expiresAt
+			})
+		)
 		.from(invoice)
 		.innerJoin(project, eq(project.id, invoice.projectId))
 		.where(
@@ -79,7 +81,7 @@ export async function listInvoices(db: DB, f: InvoiceFilter, cursor: Cursor = {}
 
 function invoiceCountsQuery(db: DB, f: InvoiceFilter) {
 	return db
-		.select({ status: invoice.status, n: count() })
+		.select(batchSelect({ status: invoice.status, n: count() }))
 		.from(invoice)
 		.where(
 			all(
@@ -115,7 +117,7 @@ export async function invoicesPage(db: DB, f: InvoiceFilter, cursor: Cursor = {}
 export async function getInvoiceDetail(db: DB, id: string) {
 	const [[row], eventRows, deliveryRows, ...timelineRows] = await db.batch([
 		db
-			.select({ invoice, project: { id: project.id, name: project.name, webhookUrl: project.webhookUrl } })
+			.select(batchSelect({ invoice, project: { id: project.id, name: project.name, webhookUrl: project.webhookUrl } }))
 			.from(invoice)
 			.innerJoin(project, eq(project.id, invoice.projectId))
 			.where(eq(invoice.id, id))

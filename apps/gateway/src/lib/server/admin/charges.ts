@@ -1,6 +1,6 @@
 /** Dashboard reads for saved-card charges. */
 import { asc, count, desc, eq, gt, inArray, lt } from 'drizzle-orm';
-import type { DB } from '../db';
+import { batchSelect, type DB } from '../db';
 import { CHARGE_STATUSES, card, charge, project, type ChargeStatus } from '../schema';
 import { all, finishPage, PAGE_SIZE, scoped, subjectEventsFrom, subjectEventsStatements, type Cursor, type Page } from './common';
 import { timelineFrom, timelineStatements, type TimelineEntry } from './timeline';
@@ -20,17 +20,19 @@ const statusCond = (s: ChargeStatus | null | undefined) =>
 
 function listChargesQuery(db: DB, f: ChargeFilter, cursor: Cursor) {
 	return db
-		.select({
-			id: charge.id,
-			projectId: charge.projectId,
-			projectName: project.name,
-			amount: charge.amount,
-			status: charge.status,
-			reference: charge.reference,
-			subscriptionId: charge.subscriptionId,
-			cardMask: card.mask,
-			createdAt: charge.createdAt
-		})
+		.select(
+			batchSelect({
+				id: charge.id,
+				projectId: charge.projectId,
+				projectName: project.name,
+				amount: charge.amount,
+				status: charge.status,
+				reference: charge.reference,
+				subscriptionId: charge.subscriptionId,
+				cardMask: card.mask,
+				createdAt: charge.createdAt
+			})
+		)
 		.from(charge)
 		.innerJoin(project, eq(project.id, charge.projectId))
 		.innerJoin(card, eq(card.id, charge.cardId))
@@ -52,7 +54,7 @@ export async function listCharges(db: DB, f: ChargeFilter, cursor: Cursor = {}) 
 export type ChargeRow = Awaited<ReturnType<typeof listCharges>> extends Page<infer R> ? R : never;
 
 function chargeCountsQuery(db: DB, f: ChargeFilter) {
-	return db.select({ status: charge.status, n: count() }).from(charge).where(scoped(charge.projectId, f.projectId)).groupBy(charge.status);
+	return db.select(batchSelect({ status: charge.status, n: count() })).from(charge).where(scoped(charge.projectId, f.projectId)).groupBy(charge.status);
 }
 
 export async function chargeCounts(db: DB, f: ChargeFilter): Promise<Record<string, number>> {
@@ -79,7 +81,7 @@ function chargeCountsFrom(rows: { status: ChargeStatus; n: number }[]): Record<s
 export async function getChargeDetail(db: DB, id: string) {
 	const [[row], eventRows, deliveryRows, ...timelineRows] = await db.batch([
 		db
-			.select({ charge, card, project: { id: project.id, name: project.name } })
+			.select(batchSelect({ charge, card, project: { id: project.id, name: project.name } }))
 			.from(charge)
 			.innerJoin(card, eq(card.id, charge.cardId))
 			.innerJoin(project, eq(project.id, charge.projectId))

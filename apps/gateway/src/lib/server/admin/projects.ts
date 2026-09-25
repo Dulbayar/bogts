@@ -12,7 +12,7 @@ import { and, count, desc, eq, gte, inArray, isNull, ne, sql, type SQLWrapper } 
 import { ApiError } from '../api/errors';
 import { issueApiKey } from '../auth/api-key';
 import { encrypt } from '../crypto';
-import type { DB } from '../db';
+import { batchSelect, type DB } from '../db';
 import { newId, newWebhookSecret } from '../ids';
 import {
 	DELIVERY_STATUSES,
@@ -73,7 +73,7 @@ export function projectOptionsStatements(db: DB, now = Date.now()) {
 	return [
 		db.select({ id: project.id, name: project.name, archivedAt: project.archivedAt }).from(project).orderBy(project.name),
 		db
-			.select({ projectId: delivery.projectId, n: count() })
+			.select(batchSelect({ projectId: delivery.projectId, n: count() }))
 			.from(delivery)
 			.where(and(failingDelivery, gte(delivery.createdAt, now - WEEK)))
 			.groupBy(delivery.projectId)
@@ -103,13 +103,15 @@ export type ProjectOption = ReturnType<typeof projectOptionsFrom>[number];
  */
 export function deliveryHealthQuery(db: DB, now = Date.now(), projectId: string | null = null) {
 	return db
-		.select({
-			projectId: delivery.projectId,
-			total: count(),
-			delivered: sql<number>`sum(case when ${delivery.status} = 'succeeded' then 1 else 0 end)`,
-			failing: sql<number>`sum(case when ${failingDelivery} then 1 else 0 end)`,
-			lastFailureAt: sql<number | null>`max(case when ${failingDelivery} then ${delivery.updatedAt} end)`
-		})
+		.select(
+			batchSelect({
+				projectId: delivery.projectId,
+				total: count(),
+				delivered: sql<number>`sum(case when ${delivery.status} = 'succeeded' then 1 else 0 end)`,
+				failing: sql<number>`sum(case when ${failingDelivery} then 1 else 0 end)`,
+				lastFailureAt: sql<number | null>`max(case when ${failingDelivery} then ${delivery.updatedAt} end)`
+			})
+		)
 		.from(delivery)
 		.where(
 			and(
@@ -213,7 +215,7 @@ export async function projectPlans(db: DB, projectId: string) {
 		db.select().from(plan).where(eq(plan.projectId, projectId)).orderBy(desc(plan.active), plan.key),
 		planValidations(db, ids),
 		db
-			.select({ planId: subscription.planId, n: count() })
+			.select(batchSelect({ planId: subscription.planId, n: count() }))
 			.from(subscription)
 			.where(inArray(subscription.planId, ids))
 			.groupBy(subscription.planId)

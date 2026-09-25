@@ -4,7 +4,7 @@
  */
 import { and, count, gte, lt, sql } from 'drizzle-orm';
 import { monthOf } from '$lib/format';
-import type { DB } from '../db';
+import { batchSelect, type DB } from '../db';
 import { event, ledger, project } from '../schema';
 import { monthBounds } from '../usage';
 import { scoped } from './common';
@@ -31,18 +31,20 @@ export async function usageTable(db: DB, input: { month: string; projectId: stri
 	// One round trip. The ledger read is `monthlyUsage` split by kind; its totals are the sums over kinds.
 	const [byKind, events, projects] = await db.batch([
 		db
-			.select({
-				projectId: ledger.projectId,
-				kind: ledger.kind,
-				rows: count(),
-				volume: sql<number>`coalesce(sum(${ledger.amount}), 0)`,
-				n: sql<number>`sum(case when ${ledger.amount} > 0 then 1 else 0 end)`
-			})
+			.select(
+				batchSelect({
+					projectId: ledger.projectId,
+					kind: ledger.kind,
+					rows: count(),
+					volume: sql<number>`coalesce(sum(${ledger.amount}), 0)`,
+					n: sql<number>`sum(case when ${ledger.amount} > 0 then 1 else 0 end)`
+				})
+			)
 			.from(ledger)
 			.where(and(gte(ledger.createdAt, start), lt(ledger.createdAt, end), scoped(ledger.projectId, input.projectId)))
 			.groupBy(ledger.projectId, ledger.kind),
 		db
-			.select({ projectId: event.projectId, n: count() })
+			.select(batchSelect({ projectId: event.projectId, n: count() }))
 			.from(event)
 			.where(and(gte(event.createdAt, start), lt(event.createdAt, end), scoped(event.projectId, input.projectId)))
 			.groupBy(event.projectId),

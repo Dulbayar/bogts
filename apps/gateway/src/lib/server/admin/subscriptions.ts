@@ -1,6 +1,6 @@
 /** Dashboard reads for subscriptions. */
 import { asc, count, desc, eq, gt, lt, sql } from 'drizzle-orm';
-import type { DB } from '../db';
+import { batchSelect, type DB } from '../db';
 import {
 	SUBSCRIPTION_STATUSES,
 	card,
@@ -28,20 +28,23 @@ export function subscriptionFilterFrom(url: URL, projectId: string | null): Subs
 
 function listSubscriptionsQuery(db: DB, f: SubscriptionFilter, cursor: Cursor) {
 	return db
-		.select({
-			id: subscription.id,
-			projectId: subscription.projectId,
-			projectName: project.name,
-			customerRef: subscription.customerRef,
-			email: subscription.email,
-			status: subscription.status,
-			planKey: plan.key,
-			planAmount: plan.amount,
-			planInterval: plan.interval,
-			cardMask: card.mask,
-			nextBillAt: subscription.nextBillAt,
-			createdAt: subscription.createdAt
-		})
+		.select(
+			batchSelect({
+				id: subscription.id,
+				projectId: subscription.projectId,
+				projectName: project.name,
+				customerRef: subscription.customerRef,
+				email: subscription.email,
+				status: subscription.status,
+				planKey: plan.key,
+				planAmount: plan.amount,
+				planInterval: plan.interval,
+				// Left-joined: typed nullable by hand (batchSelect keeps the column's own type).
+				cardMask: sql<string | null>`${card.mask}`,
+				nextBillAt: subscription.nextBillAt,
+				createdAt: subscription.createdAt
+			})
+		)
 		.from(subscription)
 		.innerJoin(project, eq(project.id, subscription.projectId))
 		.innerJoin(plan, eq(plan.id, subscription.planId))
@@ -65,7 +68,7 @@ export type SubscriptionRow = Awaited<ReturnType<typeof listSubscriptions>> exte
 
 function subscriptionCountsQuery(db: DB, f: SubscriptionFilter) {
 	return db
-		.select({ status: subscription.status, n: count() })
+		.select(batchSelect({ status: subscription.status, n: count() }))
 		.from(subscription)
 		.where(scoped(subscription.projectId, f.projectId))
 		.groupBy(subscription.status);
@@ -96,7 +99,7 @@ export async function getSubscriptionDetail(db: DB, id: string) {
 		sql`(select ${sql.identifier(column.name)} from ${subscription} where ${subscription.id} = ${id})`;
 	const [[row], cards, payments, charges, eventRows, deliveryRows, ...timelineRows] = await db.batch([
 		db
-			.select({ subscription, plan, project: { id: project.id, name: project.name } })
+			.select(batchSelect({ subscription, plan, project: { id: project.id, name: project.name } }))
 			.from(subscription)
 			.innerJoin(plan, eq(plan.id, subscription.planId))
 			.innerJoin(project, eq(project.id, subscription.projectId))

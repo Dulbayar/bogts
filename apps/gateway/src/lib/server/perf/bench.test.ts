@@ -89,7 +89,7 @@ describe.skipIf(!process.env.BOGTS_BENCH)('dashboard cost at volume', () => {
 		({ projects: [projectId] } = (await seedVolume(db, NOW, volume as typeof BENCH_VOLUME)) as { projects: [string] });
 		console.log(`seeded in ${Math.round(performance.now() - t)} ms`);
 		stats = countQueries(db);
-		const batch = (db as unknown as { batch: (s: unknown[]) => Promise<unknown[]> }).batch;
+		const batch = (db as unknown as { batch: (s: unknown[]) => Promise<unknown[]> }).batch.bind(db);
 		(db as unknown as { batch: typeof batch }).batch = async (s) => {
 			if (latency) await sleep(latency);
 			return batch(s);

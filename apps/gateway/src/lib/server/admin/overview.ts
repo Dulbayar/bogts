@@ -7,7 +7,7 @@
  * reads, each backed by an index (docs/performance.md).
  */
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
-import type { DB } from '../db';
+import { batchSelect, leftJoined, type DB } from '../db';
 import type { Config } from '../env';
 import { activity, charge, delivery, event, invoice, ledger, plan, project, subscription, type Plan } from '../schema';
 import { formatMoney, ubDayStart } from '$lib/format';
@@ -119,7 +119,7 @@ function overviewStatements(db: DB, config: Config, projectId: string | null, da
 
 		/* 1: failing deliveries per project (same rows as the events list's `?status=failing`) */
 		db
-			.select({ projectId: delivery.projectId, name: project.name, n: count() })
+			.select(batchSelect({ projectId: delivery.projectId, name: project.name, n: count() }))
 			.from(delivery)
 			.innerJoin(project, eq(project.id, delivery.projectId))
 			.where(all(failingCond(now), isLatestDelivery, scoped(delivery.projectId, projectId)))
@@ -128,12 +128,14 @@ function overviewStatements(db: DB, config: Config, projectId: string | null, da
 
 		/* 2: subscription numbers, one pass */
 		db
-			.select({
-				pastDue: sql<number>`coalesce(sum(case when ${subscription.status} = 'past_due' then 1 else 0 end), 0)`,
-				active: sql<number>`coalesce(sum(case when ${subscription.status} = 'active' then 1 else 0 end), 0)`,
-				started: sql<number>`coalesce(sum(case when ${subscription.createdAt} >= ${start} and ${subscription.createdAt} < ${end} and ${subscription.status} in ('active', 'past_due', 'cancelled') then 1 else 0 end), 0)`,
-				ended: sql<number>`coalesce(sum(case when ${subscription.cancelledAt} is not null and ${subscription.cancelledAt} >= ${start} and ${subscription.cancelledAt} < ${end} then 1 else 0 end), 0)`
-			})
+			.select(
+				batchSelect({
+					pastDue: sql<number>`coalesce(sum(case when ${subscription.status} = 'past_due' then 1 else 0 end), 0)`,
+					active: sql<number>`coalesce(sum(case when ${subscription.status} = 'active' then 1 else 0 end), 0)`,
+					started: sql<number>`coalesce(sum(case when ${subscription.createdAt} >= ${start} and ${subscription.createdAt} < ${end} and ${subscription.status} in ('active', 'past_due', 'cancelled') then 1 else 0 end), 0)`,
+					ended: sql<number>`coalesce(sum(case when ${subscription.cancelledAt} is not null and ${subscription.cancelledAt} >= ${start} and ${subscription.cancelledAt} < ${end} then 1 else 0 end), 0)`
+				})
+			)
 			.from(subscription)
 			.where(scoped(subscription.projectId, projectId)),
 
@@ -147,7 +149,7 @@ function overviewStatements(db: DB, config: Config, projectId: string | null, da
 
 		/* 4: two live Bonum mandates for the same customer and plan (reported by the Bonum module) */
 		db
-			.selectDistinct({ id: subscription.id, customerRef: subscription.customerRef })
+			.selectDistinct(batchSelect({ id: subscription.id, customerRef: subscription.customerRef }))
 			.from(activity)
 			.innerJoin(subscription, eq(subscription.id, activity.subjectId))
 			.where(
@@ -162,14 +164,16 @@ function overviewStatements(db: DB, config: Config, projectId: string | null, da
 
 		/* 5: findings in the last 30 days, one row per (subject, kind) */
 		db
-			.select({
-				subjectType: activity.subjectType,
-				kind: activity.kind,
-				subjectId: sql<string>`${activity.subjectId}`,
-				last: sql<number>`max(${activity.createdAt})`,
-				projectId: flagProject,
-				reference: invoice.reference
-			})
+			.select(
+				batchSelect({
+					subjectType: activity.subjectType,
+					kind: activity.kind,
+					subjectId: sql<string>`${activity.subjectId}`,
+					last: sql<number>`max(${activity.createdAt})`,
+					projectId: flagProject,
+					reference: invoice.reference
+				})
+			)
 			.from(activity)
 			.leftJoin(invoice, and(eq(activity.subjectType, 'invoice'), eq(invoice.id, activity.subjectId)))
 			.leftJoin(subscription, and(eq(activity.subjectType, 'subscription'), eq(subscription.id, activity.subjectId)))
@@ -195,37 +199,39 @@ function overviewStatements(db: DB, config: Config, projectId: string | null, da
 
 		/* 9: any QPay invoice (matters only when QPay is not configured) */
 		db
-			.select({ one: sql<number>`1` })
+			.select(batchSelect({ one: sql<number>`1` }))
 			.from(invoice)
 			.where(all(eq(invoice.provider, 'qpay'), scoped(invoice.projectId, projectId), config.providers.qpay ? sql`0` : undefined))
 			.limit(1),
 
 		/* 10: net volume and payments per UB day over this period and the previous one */
 		db
-			.select({
-				day: sql<number>`((${ledger.createdAt} + ${sql.raw(String(UB_OFFSET))}) / ${sql.raw(String(DAY))}) * ${sql.raw(String(DAY))} - ${sql.raw(String(UB_OFFSET))}`,
-				volume: sql<number>`sum(${ledger.amount})`,
-				n: sql<number>`sum(case when ${ledger.amount} > 0 then 1 else 0 end)`
-			})
+			.select(
+				batchSelect({
+					day: sql<number>`((${ledger.createdAt} + ${sql.raw(String(UB_OFFSET))}) / ${sql.raw(String(DAY))}) * ${sql.raw(String(DAY))} - ${sql.raw(String(UB_OFFSET))}`,
+					volume: sql<number>`sum(${ledger.amount})`,
+					n: sql<number>`sum(case when ${ledger.amount} > 0 then 1 else 0 end)`
+				})
+			)
 			.from(ledger)
 			.where(all(gte(ledger.createdAt, prevStart), lt(ledger.createdAt, end), scoped(ledger.projectId, projectId)))
 			.groupBy(sql`1`),
 
 		/* 11, 12: finished invoices and charges created in the period (success rate) */
 		db
-			.select({ status: invoice.status, n: count() })
+			.select(batchSelect({ status: invoice.status, n: count() }))
 			.from(invoice)
 			.where(all(gte(invoice.createdAt, start), lt(invoice.createdAt, end), inArray(invoice.status, ['paid', 'failed', 'expired']), scoped(invoice.projectId, projectId)))
 			.groupBy(invoice.status),
 		db
-			.select({ status: charge.status, n: count() })
+			.select(batchSelect({ status: charge.status, n: count() }))
 			.from(charge)
 			.where(all(gte(charge.createdAt, start), lt(charge.createdAt, end), inArray(charge.status, ['succeeded', 'failed', 'reversed']), scoped(charge.projectId, projectId)))
 			.groupBy(charge.status),
 
 		/* 13: recent events */
 		db
-			.select({ event, delivery, projectName: project.name })
+			.select(batchSelect({ event, delivery, projectName: project.name }))
 			.from(event)
 			.innerJoin(project, eq(project.id, event.projectId))
 			.leftJoin(delivery, latestDeliveryJoin)
@@ -495,7 +501,7 @@ export async function overview(db: DB, config: Config, input: { projectId: strin
 		amount: typeof r.event.data.amount === 'number' ? r.event.data.amount : null,
 		projectName: r.projectName,
 		createdAt: r.event.createdAt,
-		delivery: summarizeDelivery(r.delivery)
+		delivery: summarizeDelivery(leftJoined(r.delivery, 'id'))
 	}));
 
 	const healthMap = deliveryHealthFrom(healthRows);

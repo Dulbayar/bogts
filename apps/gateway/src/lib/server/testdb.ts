@@ -1,17 +1,28 @@
 /**
- * A real SQLite database for tests, not a mock.
+ * A real SQLite database for tests, not a mock, reached through the same
+ * Drizzle driver production uses.
  *
  * The gateway's invariants are enforced by SQL: the ledger's unique
  * `(provider, provider_ref)`, conditional updates, `INSERT … ON CONFLICT`. A
  * hand-written fake would agree with whatever the code believes, so tests run
- * the generated Drizzle migrations against an in-memory SQLite database and
- * exercise the same statements production sends to D1.
+ * the generated Drizzle migrations against an in-memory SQLite database.
  *
- * Two fidelity choices:
+ * The database is wrapped in a small `D1Database` (`FakeD1` below) and handed
+ * to `drizzle-orm/d1`, the production driver, so result mapping is D1's too.
+ * That matters: `db.batch()` gets D1's row OBJECTS back and Drizzle maps them
+ * by position (`Object.keys(row)`), so a batched select with two columns of the
+ * same name (`id`, `name`, `status`, …) silently shifts every later field. A
+ * better-sqlite3 driver reads arrays and hides that. Fidelity choices:
  *  - `foreign_keys = ON`, because D1 enforces them.
- *  - `db.batch()` is shimmed onto the better-sqlite3 driver (which only has
- *    `transaction()`), so batched statements run in one real SQLite
- *    transaction, as D1 runs them.
+ *  - `all()`/`first()`/`batch()` build objects the way workerd does
+ *    (`Object.fromEntries` over the column names: a repeated name keeps its
+ *    first position and the last value); `raw()` returns arrays.
+ *  - `batch()` runs every statement in one SQLite transaction and returns one
+ *    `all()`-shaped result per statement.
+ *  - Bound booleans become 1/0, `undefined` is a type error, more than 100 bound
+ *    parameters is an error (D1's limit), blobs come back as number arrays; `BEGIN`/`SAVEPOINT` are refused (D1 has no SQL transactions).
+ *  - Stricter than D1: an object result with a repeated or integer-like column
+ *    name throws (`strictColumns`), since that is data loss in production.
  *
  * Test scaffolding only: nothing in `src/routes` may import this file.
  */
@@ -19,13 +30,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { issueApiKey } from './auth/api-key';
 import { encrypt } from './crypto';
-import type { DB } from './db';
+import { getDb, type DB } from './db';
 import type { Config } from './env';
 import { newId, newWebhookSecret } from './ids';
-import * as schema from './schema';
 import { plan, project, type PlanInterval, type Project } from './schema';
 
 const MIGRATIONS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../drizzle');
@@ -40,44 +49,178 @@ function migrationStatements(): string[] {
 		.filter(Boolean);
 }
 
-type Preparable = { _prepare(): { executeMethod: 'run' | 'all' | 'get' | 'values' } };
+/* ------------------------------------------------------------------ *
+ * A D1Database over better-sqlite3
+ * ------------------------------------------------------------------ */
 
-/**
- * Drizzle's better-sqlite3 driver has no `batch()`. Give it D1's contract: run
- * every statement in order inside one transaction, roll back on error, return
- * one result per statement.
- */
-function attachBatch(db: ReturnType<typeof drizzle>, sqlite: Database.Database) {
-	const inTransaction = sqlite.transaction((statements: Preparable[]) =>
-		statements.map((statement) => {
-			const prepared = statement._prepare() as unknown as Record<string, () => unknown> & {
-				executeMethod: 'run' | 'all' | 'get' | 'values';
-			};
-			return prepared[prepared.executeMethod]!();
-		})
-	);
-	(db as unknown as { batch: (s: unknown[]) => Promise<unknown[]> }).batch = async (statements) =>
-		inTransaction(statements as Preparable[]);
+type Row = Record<string, unknown>;
+type Meta = D1Result['meta'];
+
+/** D1 refuses SQL transaction control; so does the fake. */
+const TRANSACTION_SQL = /^\s*(begin|commit|end|rollback|savepoint|release)\b/i;
+const D1_MAX_PARAMS = 100;
+/** Keys JavaScript orders first, whatever their position (array indices). */
+const INDEX_LIKE = /^(0|[1-9]\d*)$/;
+
+function toSqlite(value: unknown): unknown {
+	if (value === undefined) throw new TypeError('D1_TYPE_ERROR: Type \'undefined\' not supported for value \'undefined\'');
+	if (typeof value === 'boolean') return value ? 1 : 0;
+	if (value instanceof ArrayBuffer) return Buffer.from(value);
+	if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+	return value;
 }
 
-export type TestDb = DB & { $sqlite: Database.Database };
+function fromSqlite(value: unknown): unknown {
+	if (value instanceof Uint8Array) return Array.from(value);
+	if (typeof value === 'bigint') return Number(value);
+	return value;
+}
 
-/**
- * A migrated, empty database.
- *
- * The cast to `DB` is the one lie here: D1 and better-sqlite3 differ at the
- * type level (async vs sync result kinds), but every builder Drizzle returns is
- * thenable either way and `attachBatch` supplies the one missing method.
- */
+export type FakeD1Hooks = {
+	/** Called once per SQL statement executed. */
+	statement?: () => void;
+	/** Called once per D1 round trip (a single statement, or a whole batch). */
+	roundTrip?: () => void;
+};
+
+type Executed = { columns: string[]; rows: unknown[][]; changes: number; lastRowId: number };
+
+class FakeD1Statement {
+	constructor(
+		private readonly d1: FakeD1,
+		readonly sql: string,
+		readonly params: unknown[] = []
+	) {}
+
+	bind(...values: unknown[]): FakeD1Statement {
+		// D1's documented limit: 100 bound parameters per query.
+		if (values.length > D1_MAX_PARAMS) throw new Error(`D1_ERROR: too many SQL variables (${values.length} > ${D1_MAX_PARAMS})`);
+		return new FakeD1Statement(this.d1, this.sql, values.map(toSqlite));
+	}
+
+	/** @internal Runs the statement against SQLite (no round-trip accounting). */
+	execute(): Executed {
+		if (TRANSACTION_SQL.test(this.sql)) {
+			throw new Error('D1_ERROR: To execute a transaction, please use the state.storage.transaction() or state.storage.transactionSync() APIs instead of the SQL BEGIN TRANSACTION or SAVEPOINT statements.');
+		}
+		this.d1.hooks.statement?.();
+		const stmt = this.d1.sqlite.prepare(this.sql);
+		if (stmt.reader) {
+			const columns = stmt.columns().map((c) => c.name);
+			const rows = (stmt.raw(true).all(...this.params) as unknown[][]).map((r) => r.map(fromSqlite));
+			return { columns, rows, changes: 0, lastRowId: 0 };
+		}
+		const info = stmt.run(...this.params);
+		return { columns: [], rows: [], changes: info.changes, lastRowId: Number(info.lastInsertRowid) };
+	}
+
+	/** @internal The `all()` shape, from an execution. `strict`: see `FakeD1.strictColumns`. */
+	result(x: Executed, strict = this.d1.strictColumns): D1Result<Row> {
+		return { results: this.d1.objects(x, this.sql, strict), success: true, meta: meta(x) };
+	}
+
+	async all<T = Row>(): Promise<D1Result<T>> {
+		return this.d1.single(() => this.result(this.execute())) as D1Result<T>;
+	}
+
+	/** Same shape as `all()`; its rows are rarely read (`select 1` health checks), so never strict. */
+	async run<T = Row>(): Promise<D1Result<T>> {
+		return this.d1.single(() => this.result(this.execute(), false)) as D1Result<T>;
+	}
+
+	async first<T = unknown>(column?: string): Promise<T | null> {
+		const { results } = await this.all<Row>();
+		const row = results[0];
+		if (!row) return null;
+		if (column === undefined) return row as T;
+		if (!(column in row)) throw new Error(`D1_COLUMN_NOTFOUND: Column not found (${column})`);
+		return row[column] as T;
+	}
+
+	async raw<T = unknown[]>(options?: { columnNames?: boolean }): Promise<T[]> {
+		return this.d1.single(() => {
+			const x = this.execute();
+			return (options?.columnNames ? [x.columns, ...x.rows] : x.rows) as T[];
+		});
+	}
+}
+
+function meta(x: Executed): Meta {
+	return {
+		duration: 0,
+		size_after: 0,
+		rows_read: x.rows.length,
+		rows_written: x.changes,
+		last_row_id: x.lastRowId,
+		changed_db: x.changes > 0,
+		changes: x.changes
+	} as Meta;
+}
+
+export class FakeD1 {
+	hooks: FakeD1Hooks = {};
+	/** Throw on object results whose column names repeat or look like array indices (see the header). */
+	strictColumns = true;
+
+	constructor(readonly sqlite: Database.Database) {}
+
+	prepare(query: string): FakeD1Statement {
+		return new FakeD1Statement(this, query);
+	}
+
+	async batch<T = Row>(statements: FakeD1Statement[]): Promise<D1Result<T>[]> {
+		this.hooks.roundTrip?.();
+		const run = this.sqlite.transaction(() => statements.map((s) => s.result(s.execute())));
+		return run() as D1Result<T>[];
+	}
+
+	async exec(query: string): Promise<D1ExecResult> {
+		this.hooks.roundTrip?.();
+		this.sqlite.exec(query);
+		return { count: 1, duration: 0 };
+	}
+
+	withSession(): this {
+		return this;
+	}
+
+	/** @internal */
+	single<T>(fn: () => T): T {
+		this.hooks.roundTrip?.();
+		return fn();
+	}
+
+	/** @internal Rows as workerd builds them: `Object.fromEntries` over the column names. */
+	objects(x: Executed, sql: string, strict: boolean): Row[] {
+		if (strict && x.rows.length) {
+			const seen = new Set<string>();
+			for (const c of x.columns) {
+				if (seen.has(c) || INDEX_LIKE.test(c)) {
+					throw new Error(
+						`FakeD1: column "${c}" ${seen.has(c) ? 'repeats' : 'is an integer-like name'} in an object result. ` +
+							`D1 returns rows as objects, so Drizzle's db.batch() would map every later field wrong. ` +
+							`Give each selected column a unique name (see docs/contracts.md, "As built"). SQL: ${sql}`
+					);
+				}
+				seen.add(c);
+			}
+		}
+		return x.rows.map((r) => Object.fromEntries(r.map((v, i) => [x.columns[i], v])));
+	}
+}
+
+export type TestDb = DB & { $sqlite: Database.Database; $d1: FakeD1 };
+
+/** A migrated, empty database behind the production Drizzle D1 driver. */
 export function createTestDb(): TestDb {
 	const sqlite = new Database(':memory:');
 	sqlite.pragma('foreign_keys = ON');
 	for (const statement of migrationStatements()) sqlite.exec(statement);
-	const db = drizzle(sqlite, { schema });
-	attachBatch(db, sqlite);
-	const typed = db as unknown as TestDb;
-	Object.defineProperty(typed, '$sqlite', { value: sqlite, enumerable: false });
-	return typed;
+	const d1 = new FakeD1(sqlite);
+	const db = getDb(d1 as unknown as D1Database) as TestDb;
+	Object.defineProperty(db, '$sqlite', { value: sqlite, enumerable: false });
+	Object.defineProperty(db, '$d1', { value: d1, enumerable: false });
+	return db;
 }
 
 /* ------------------------------------------------------------------ *
@@ -179,11 +322,7 @@ export type QueryStats = {
 	reset(): void;
 };
 
-/**
- * Counts the statements and D1 round trips `db` runs from now on. Wraps the
- * SQLite handle's `prepare` (Drizzle prepares once per execution) and the
- * `batch` shim.
- */
+/** Counts the statements and D1 round trips `db` runs from now on. */
 export function countQueries(db: TestDb): QueryStats {
 	const stats: QueryStats = {
 		statements: 0,
@@ -193,24 +332,9 @@ export function countQueries(db: TestDb): QueryStats {
 			stats.roundTrips = 0;
 		}
 	};
-	const sqlite = db.$sqlite;
-	const prepare = sqlite.prepare.bind(sqlite);
-	let inBatch = 0;
-	sqlite.prepare = ((source: string) => {
-		stats.statements++;
-		if (!inBatch) stats.roundTrips++;
-		return prepare(source);
-	}) as typeof sqlite.prepare;
-	const holder = db as unknown as { batch: (s: unknown[]) => Promise<unknown[]> };
-	const batch = holder.batch;
-	holder.batch = async (statements) => {
-		stats.roundTrips++;
-		inBatch++;
-		try {
-			return await batch(statements);
-		} finally {
-			inBatch--;
-		}
+	db.$d1.hooks = {
+		statement: () => void stats.statements++,
+		roundTrip: () => void stats.roundTrips++
 	};
 	return stats;
 }
