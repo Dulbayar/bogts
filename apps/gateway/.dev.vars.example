@@ -1,0 +1,20 @@
+# Bonum (card subscriptions, hosted checkout, saved-card charges). All three secrets empty = Bonum off.
+BONUM_ENVIRONMENT=production # `production` or `test` (Bonum sandbox); empty means production
+BONUM_APP_SECRET= # Bonum merchant App secret
+BONUM_TERMINAL_ID= # Bonum Terminal ID
+BONUM_CHECKSUM_KEY= # Bonum webhook checksum key (x-checksum-v2)
+
+# QPay (direct QR invoices). All three secrets empty = QPay off.
+QPAY_ENVIRONMENT=production # `production` or `test` (QPay merchant sandbox); empty means production
+QPAY_CLIENT_ID= # QPay merchant client id
+QPAY_CLIENT_PASSWORD= # QPay merchant client password
+QPAY_INVOICE_CODE= # QPay invoice code (template) issued by QPay
+
+# Security
+ENCRYPTION_KEY= # required: 32 random bytes, base64 (`openssl rand -base64 32`); never change after the first payment
+ADMIN_PASSWORD= # /admin password, 12+ characters; ignored when Cloudflare Access is set below
+PUBLIC_ORIGIN= # this Worker's public https:// origin, e.g. https://payments.example.com (http://localhost:5173 in dev)
+
+# Cloudflare Access (optional; replaces ADMIN_PASSWORD when both are set)
+CF_ACCESS_TEAM_DOMAIN= # e.g. yourteam.cloudflareaccess.com
+CF_ACCESS_AUD= # the Access application's AUD tag

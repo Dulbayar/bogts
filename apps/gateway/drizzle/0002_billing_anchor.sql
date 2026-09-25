@@ -1,0 +1,1 @@
+ALTER TABLE `subscription` ADD `billing_anchor` integer;

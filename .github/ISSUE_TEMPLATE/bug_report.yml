@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Bogts doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security problem?** Don't file it here. Report it privately: see SECURITY.md.
+        **Never paste secrets**: no provider credentials, API keys (`bgk_…`), signing secrets (`bgwh_…`), card tokens or `.dev.vars` contents. Use placeholders.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: API requests (with placeholders), provider webhooks you saw, or dashboard steps.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - QPay
+        - Bonum
+        - Project API (/v1)
+        - Webhooks / events
+        - Dashboard (/admin)
+        - "@gege/bogts client"
+        - Deploy / configuration
+        - Docs
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Provider environment
+      options:
+        - Sandbox (test)
+        - Production
+        - Local development
+        - Not relevant
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0 or a commit sha
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error codes and logs
+      description: The `error.code` and message from the API, or Worker log lines. Remove anything secret first.
+      render: text

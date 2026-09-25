@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WRANGLER_SEND_METRICS: 'false'
+
+jobs:
+  test:
+    name: Check, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # pnpm from the root package.json's packageManager.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Gateway tests
+        run: pnpm --filter @bogts/gateway test
+      - name: Client tests
+        run: pnpm --filter @gege/bogts test
+      - name: Client build
+        run: pnpm --filter @gege/bogts build
+      - name: Gateway build
+        run: pnpm --filter @bogts/gateway build
+
+  gateway-standalone:
+    # The Deploy to Cloudflare button copies only apps/gateway into a new
+    # repository. Prove that copy installs from its own lockfile, builds and
+    # bundles, without anything from the rest of the monorepo.
+    name: Gateway deploys on its own
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Exactly the pnpm apps/gateway pins (packageManager), as Workers Builds uses.
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: apps/gateway/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: apps/gateway/pnpm-lock.yaml matches the root lockfile
+        run: node scripts/gateway-lockfile.mjs --check
+      - name: Copy apps/gateway alone
+        run: |
+          mkdir -p "$RUNNER_TEMP/gateway"
+          git archive HEAD:apps/gateway | tar -x -C "$RUNNER_TEMP/gateway"
+      - name: Install from its own lockfile (pnpm 10.11.1, its packageManager)
+        working-directory: ${{ runner.temp }}/gateway
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        working-directory: ${{ runner.temp }}/gateway
+        run: pnpm run build
+      - name: wrangler deploy --dry-run
+        working-directory: ${{ runner.temp }}/gateway
+        run: pnpm wrangler deploy --dry-run --outdir dist

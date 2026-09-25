@@ -1,0 +1,80 @@
+# Changelog
+
+All notable changes to Bogts are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
+[Semantic Versioning](https://semver.org/). Before 1.0, a minor version may
+change the API; the notes will say how to upgrade.
+
+## [0.1.0] - Unreleased
+
+The first release: one Cloudflare Worker for Bonum and QPay.
+
+### Added
+
+- **Gateway** (`apps/gateway`): one deployment per company, many projects,
+  each with its own API key, webhook URL, signing secret and plans.
+- **QPay invoices**: a QR, bank-app deeplinks and a hosted page at `/pay/:id`.
+  Callbacks are treated as hints and re-checked with `payment/check`, and an
+  expiry sweep checks each invoice exactly once.
+- **Bonum**: card subscriptions (renewals keyed on `invoiceId`, `UNSUBSCRIBED`
+  handled, cancel with `planId`), card replacement, the hosted All-in-one
+  invoice, saved-card charges (immediate or queued) and reversals.
+  `x-checksum-v2` is verified with number text kept exactly as sent.
+- **Project API** `/v1`: invoices, subscriptions, charges and events, with
+  `Idempotency-Key` on every POST and cursor pagination.
+- **Events**: an outbox with signed webhooks (`Bogts-Signature`), retries with
+  backoff for 3 days, re-delivery, and the `GET /v1/events?after=` feed for
+  reconciling.
+- **Dashboard** at `/admin`, behind Cloudflare Access or a password. It fails
+  closed when neither is configured.
+- **`@gege/bogts`**: a typed client, `verifyWebhook` and `constructEvent`.
+- **Deploy to Cloudflare** button, D1 migrations applied on every deploy, and
+  documentation: self-hosting, API, webhooks, providers.
+
+### Hardening (real-world failure modes)
+
+- **One purchase, one invoice**: `POST /v1/invoices` returns the pending,
+  unexpired invoice for an identical request (same `reference`, `provider`,
+  `amount`, `description`, `returnUrl` and `metadata`) (`200`) instead of
+  creating another (`201`), unless `reuse: false`. A reference should identify
+  exactly one purchase; a shared reference with different contents is a
+  different purchase. The `Bogts-Reused: true|false` response header says
+  which, and `@gege/bogts` returns it as `reused` from `invoices.create`.
+- **Other invoices closed once one is paid**: the purchase's other pending
+  invoices are cancelled (no event) in the background; a QPay one only once
+  QPay confirms the cancel, else it stays pending for its expiry check.
+- **Paid twice**: a second invoice paid for the same purchase is still
+  settled; its `invoice.paid` carries `duplicateOfInvoiceId`, and Overview's
+  "Needs attention" says "N references paid twice: refund one". When one
+  QPay invoice's QR is paid twice, the invoice is settled once and the extra
+  payment is listed on "Needs attention" to refund (`qpay.extra_payment`, not
+  `duplicateOfInvoiceId`); a QPay payment later shown as refunded is recorded
+  and listed too.
+- **QPay late check**: an expired or cancelled QPay invoice is checked once
+  more about 24 h after expiry, since QPay keeps accepting payment and its
+  callback can be lost. `invoice.paid` then follows `invoice.expired` (or the
+  cancel).
+- **Bonum invoice grace**: a Bonum hosted invoice expires 2 h after
+  `expiresAt`, so Bonum's webhook retries can land first.
+- **Missed Bonum renewals are reconciled** hourly with Bonum's Get
+  Subscriptions: credited (`subscription.renewed`), cancelled
+  (`reason: "provider_cancelled"`) or marked past due
+  (`subscription.payment_failed`, `reason: "renewal_missing"`). Renewals are
+  deduplicated by billing period, so a reconciled renewal and its late
+  webhook never both count.
+- **Docs**: correcting events, granting by `reference` idempotently, and the
+  reconciliation behaviour (`docs/webhooks.md`).
+
+### Fixed
+
+- Bonum's sandbox refuses `items[]` without `remark` (and, for tokenization,
+  `image`); both are now always sent.
+- A checkout Bonum refuses now emits `subscription.payment_failed`
+  (`checkout_failed`), as a failed invoice emits `invoice.failed`.
+- The dashboard's event page shows exactly the delivered body.
+- Bonum timestamps with an explicit zone are read with it (zone-less ones
+  stay Ulaanbaatar time, now proven from Bonum's own samples).
+
+### Not yet
+
+- e-barimt (the columns are reserved).

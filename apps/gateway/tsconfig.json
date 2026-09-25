@@ -1,0 +1,23 @@
+{
+	// Self-contained on purpose: the Deploy to Cloudflare button copies only
+	// apps/gateway into a new repository, so nothing here may reach outside it.
+	// These are the options of ../../tsconfig.base.json that SvelteKit's
+	// generated config does not already set (target, lib and module come from it).
+	"extends": "./.svelte-kit/tsconfig.json",
+	"compilerOptions": {
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"rewriteRelativeImportExtensions": true,
+		"allowJs": true,
+		"checkJs": true,
+		"sourceMap": true,
+		"types": ["@cloudflare/workers-types"]
+	}
+	// Path aliases are handled by SvelteKit (https://svelte.dev/docs/kit/configuration#alias),
+	// $lib included. To change include/exclude, extend the generated config.
+}

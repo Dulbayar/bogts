@@ -1,0 +1,20 @@
+{
+	"name": "bogts",
+	"private": true,
+	"version": "0.0.0",
+	"description": "Open-source, self-hosted payment gateway for Mongolian providers (Bonum, QPay) on one Cloudflare Worker",
+	"license": "Apache-2.0",
+	"type": "module",
+	"packageManager": "pnpm@12.4.1",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"dev": "pnpm --filter @bogts/gateway dev",
+		"build": "pnpm --filter @bogts/gateway build && pnpm --filter @gege/bogts build",
+		"check": "pnpm --filter @bogts/gateway check && pnpm --filter @gege/bogts check",
+		"test": "pnpm --filter @bogts/gateway test && pnpm --filter @gege/bogts test",
+		"deploy": "pnpm --filter @bogts/gateway run deploy",
+		"lockfile:gateway": "node scripts/gateway-lockfile.mjs"
+	}
+}

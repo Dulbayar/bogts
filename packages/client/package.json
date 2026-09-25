@@ -1,0 +1,41 @@
+{
+	"name": "@gege/bogts",
+	"version": "0.0.0",
+	"description": "Typed client and webhook signature check for Bogts, the self-hosted Mongolian payment gateway",
+	"license": "Apache-2.0",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"check": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run",
+		"prepublishOnly": "pnpm build"
+	},
+	"devDependencies": {
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.11"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"keywords": [
+		"bogts",
+		"payments",
+		"mongolia",
+		"qpay",
+		"bonum",
+		"webhooks"
+	]
+}

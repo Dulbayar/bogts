@@ -1,0 +1,95 @@
+{
+	"name": "@bogts/gateway",
+	"private": true,
+	"version": "0.0.0",
+	"description": "Bogts: the Cloudflare Worker (API, provider webhooks, dashboard)",
+	"license": "Apache-2.0",
+	"type": "module",
+	"packageManager": "pnpm@10.11.1",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"db:generate": "drizzle-kit generate",
+		"db:migrate:local": "wrangler d1 migrations apply DB --local",
+		"deploy": "vite build && wrangler d1 migrations apply DB --remote && wrangler deploy"
+	},
+	"cloudflare": {
+		"bindings": {
+			"DB": {
+				"description": "D1 database for projects, payments, card tokens (encrypted) and the event outbox. Created for you."
+			},
+			"BONUM_ENVIRONMENT": {
+				"description": "`production` or `test` (Bonum sandbox). Defaults to `production` when empty."
+			},
+			"BONUM_APP_SECRET": {
+				"description": "Bonum merchant **App secret** from the Bonum merchant portal. Leave empty to switch Bonum off."
+			},
+			"BONUM_TERMINAL_ID": {
+				"description": "Bonum **Terminal ID**. Leave empty to switch Bonum off."
+			},
+			"BONUM_CHECKSUM_KEY": {
+				"description": "Bonum **webhook checksum key** (verifies `x-checksum-v2`). Leave empty to switch Bonum off."
+			},
+			"QPAY_ENVIRONMENT": {
+				"description": "`production` or `test` (QPay merchant sandbox). Defaults to `production` when empty."
+			},
+			"QPAY_CLIENT_ID": {
+				"description": "QPay merchant **client id**. Leave empty to switch QPay off."
+			},
+			"QPAY_CLIENT_PASSWORD": {
+				"description": "QPay merchant **client password**. Leave empty to switch QPay off."
+			},
+			"QPAY_INVOICE_CODE": {
+				"description": "QPay **invoice code** (invoice template) issued by QPay. Leave empty to switch QPay off."
+			},
+			"ENCRYPTION_KEY": {
+				"description": "**Required.** 32 random bytes, base64. Encrypts card tokens, provider tokens and webhook secrets. Generate with `openssl rand -base64 32`. Never change it after the first payment."
+			},
+			"ADMIN_PASSWORD": {
+				"description": "Password for the `/admin` dashboard, at least 12 characters. Ignored when Cloudflare Access is configured below. Without either, the gateway refuses to serve."
+			},
+			"PUBLIC_ORIGIN": {
+				"description": "The public `https://` origin this Worker answers on, e.g. `https://payments.example.com`. Providers call back here; required for any provider to be on."
+			},
+			"CF_ACCESS_TEAM_DOMAIN": {
+				"description": "Optional. Your [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/) team domain, e.g. `yourteam.cloudflareaccess.com`. Set together with `CF_ACCESS_AUD` to protect `/admin` with Access instead of a password."
+			},
+			"CF_ACCESS_AUD": {
+				"description": "Optional. The Access application's **AUD tag**. Set together with `CF_ACCESS_TEAM_DOMAIN`."
+			}
+		}
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^5.20260907.1",
+		"@sveltejs/adapter-cloudflare": "^7.2.9",
+		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@types/better-sqlite3": "^9.6.0",
+		"@types/node": "^24.0.0",
+		"better-sqlite3": "^13.0.3",
+		"drizzle-kit": "^0.31.10",
+		"svelte": "^5.56.1",
+		"svelte-check": "^4.6.0",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.16",
+		"vitest": "^4.1.11",
+		"wrangler": "^4.131.1"
+	},
+	"dependencies": {
+		"drizzle-orm": "^0.45.2",
+		"jose": "^6.2.12",
+		"qpay-js": "1.0.0",
+		"qrcode-generator": "^2.0.4",
+		"ulid": "^3.0.2",
+		"zod": "^4.5.4"
+	}
+}

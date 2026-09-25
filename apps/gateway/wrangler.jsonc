@@ -1,0 +1,41 @@
+/**
+ * The generic deploy config: what the "Deploy to Cloudflare" button and a plain
+ * `pnpm deploy` use. Keep it account-neutral: no account_id, no database_id
+ * (D1 is provisioned on first deploy), no routes. Secrets come from
+ * `.dev.vars.example` (the Deploy button prompts for each one).
+ *
+ * For your own settings (account, routes, a staging copy), keep your own
+ * configs in a separate private repo and deploy with `-c`.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bogts",
+  "compatibility_date": "2026-09-08",
+  // global_fetch_strictly_public: webhook deliveries go out over the public
+  // internet, so a project Worker on the same Cloudflare account/zone is reached
+  // like any other endpoint (without it, Cloudflare answers error 1042).
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  // The hand-written entry: the adapter's `fetch` plus the cron's `scheduled`.
+  // The adapter builds from wrangler.build.jsonc, because it deletes and rewrites
+  // whatever `main` its config names. `kit:worker` is that build output, so run
+  // `pnpm build` before any wrangler command that bundles (deploy, dev).
+  "main": "src/worker.ts",
+  "alias": { "kit:worker": "./.svelte-kit/cloudflare/_worker.js" },
+  "assets": { "directory": ".svelte-kit/cloudflare", "binding": "ASSETS" },
+
+  // Every minute: retry due webhook deliveries. Every 10th minute: the invoice
+  // expiry sweep. See src/lib/server/cron.ts. No Queues, so the free plan works.
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true },
+
+  "d1_databases": [
+    {
+      // Migrations are applied by binding name (`wrangler d1 migrations apply DB`),
+      // so a different database_name chosen in the Deploy button still works.
+      "binding": "DB",
+      "database_name": "bogts",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}

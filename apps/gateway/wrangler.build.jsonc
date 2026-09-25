@@ -1,0 +1,18 @@
+/**
+ * Build-only wrangler config, read by `@sveltejs/adapter-cloudflare` and nothing
+ * else (`adapter({ config })` in vite.config.ts). NOT a deploy config: deploy
+ * with `wrangler.jsonc` (or your own copy of it, via `-c`).
+ *
+ * The adapter deletes and rewrites whatever file its config names as `main`.
+ * `wrangler.jsonc`'s `main` is the hand-written `src/worker.ts` (it adds the
+ * cron's `scheduled` handler), so the adapter must not see that config. Here
+ * `main` is the adapter's own output; `wrangler.jsonc` reaches it through the
+ * `kit:worker` alias. Deliberately no bindings, vars, routes or triggers.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bogts",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  // Must match wrangler.jsonc: the adapter writes assets here, the deploy uploads from here.
+  "assets": { "directory": ".svelte-kit/cloudflare", "binding": "ASSETS" }
+}

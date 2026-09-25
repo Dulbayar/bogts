@@ -1,0 +1,1 @@
+ALTER TABLE `project` ADD `previous_api_key_prefix` text;

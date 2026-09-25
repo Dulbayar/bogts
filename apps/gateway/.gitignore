@@ -1,0 +1,15 @@
+# apps/gateway also stands alone (the Deploy to Cloudflare button copies only
+# this folder into a new repository), so it carries its own ignore list.
+node_modules/
+.svelte-kit/
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+coverage/
+dist/
+build/
+.DS_Store
