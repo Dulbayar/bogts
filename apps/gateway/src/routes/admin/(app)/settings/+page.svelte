@@ -127,7 +127,6 @@
 				</div>
 				{#if brandError}<Callout tone="danger" role="alert">{brandError}</Callout>{/if}
 				<div class="actions">
-					<span class="subtle small">Shown in the dashboard and on payment pages. Projects can use their own name and logo.</span>
 					<button type="submit" class="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save branding'}</button>
 				</div>
 			</form>
@@ -263,15 +262,11 @@
 	.actions {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: flex-end;
 		gap: var(--space-3);
 		flex-wrap: wrap;
 		padding-top: var(--space-4);
 		border-top: 1px solid var(--border);
-	}
-	.small {
-		font-size: var(--text-xs);
-		flex: 1 1 240px;
 	}
 	@media (max-width: 559px) {
 		.two {
