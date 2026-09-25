@@ -8,6 +8,9 @@ import { ApiError } from './api/errors';
 import type { DB } from './db';
 import { normalizeHex } from '../brand';
 import { brandLogo, branding, project, type Branding, type LogoType } from './schema';
+import { sanitizeSvg, skipProlog } from './svg';
+
+export { sanitizeSvg };
 
 export const BRANDING_ID = 'default';
 export const LOGO_MAX_BYTES = 256 * 1024;
@@ -136,43 +139,11 @@ export function sniffLogo(bytes: Uint8Array): LogoType | null {
 	if (bytes.length >= 8 && PNG.every((b, i) => bytes[i] === b)) return 'image/png';
 	const ascii = (from: number, to: number) => String.fromCharCode(...bytes.slice(from, to));
 	if (bytes.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
-	const head = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 1024)).replace(/^﻿/, '').trimStart();
-	if (/^(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(head)) return 'image/svg+xml';
+	// The prolog (XML declaration, comments, an Illustrator DOCTYPE with its entity subset) may be long.
+	const head = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 16 * 1024));
+	const at = skipProlog(head);
+	if (at >= 0 && /^<svg[\s>/]/.test(head.slice(at, at + 5))) return 'image/svg+xml';
 	return null;
-}
-
-/**
- * An SVG with everything active removed: scripts, `<foreignObject>`, event
- * handler attributes, `javascript:`/external references, DOCTYPE/ENTITY
- * declarations, and `<style>` (which could `@import`). The route also serves
- * SVG with `Content-Security-Policy: sandbox` and browsers never run scripts in
- * an `<img>`, so this is the second of three layers. Throws when what is left
- * is not a single `<svg>` document.
- */
-export function sanitizeSvg(input: string): string {
-	let s = input.replace(/^﻿/, '');
-	s = s.replace(/<\?xml[\s\S]*?\?>/gi, '');
-	s = s.replace(/<!DOCTYPE[\s\S]*?(\[[\s\S]*?\])?\s*>/gi, '');
-	s = s.replace(/<!ENTITY[\s\S]*?>/gi, '');
-	s = s.replace(/<!--[\s\S]*?-->/g, '');
-	s = s.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '');
-	for (const tag of ['script', 'foreignObject', 'style', 'iframe', 'embed', 'object', 'audio', 'video', 'animate', 'set', 'animateTransform', 'animateMotion', 'handler', 'listener']) {
-		s = s.replace(new RegExp(`<${tag}\\b[\\s\\S]*?<\\/${tag}\\s*>`, 'gi'), '');
-		s = s.replace(new RegExp(`<${tag}\\b[^>]*\\/?>`, 'gi'), '');
-		s = s.replace(new RegExp(`<\\/${tag}\\s*>`, 'gi'), '');
-	}
-	// Attributes: event handlers, and any href/src that is not an in-document #fragment.
-	s = s.replace(/\s(on[a-z0-9_:-]*)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-	s = s.replace(/\s((?:xlink:)?href|src)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (whole, _name: string, value: string) => {
-		const v = value.replace(/^["']|["']$/g, '').trim();
-		return v.startsWith('#') ? whole : '';
-	});
-	// `url(...)` in presentation attributes may only point inside the document.
-	s = s.replace(/url\(\s*(['"]?)(?!#)[^)]*\1\s*\)/gi, 'none');
-	s = s.replace(/javascript:/gi, '');
-	s = s.trim();
-	if (!/^<svg[\s>]/i.test(s) || !/<\/svg>\s*$/i.test(s)) throw new ApiError(400, 'invalid_request', 'Logo: the SVG could not be read');
-	return s;
 }
 
 function toBase64(bytes: Uint8Array): string {

@@ -47,27 +47,22 @@ describe('sniffLogo', () => {
 	});
 });
 
-describe('sanitizeSvg', () => {
-	it('strips scripts, handlers, foreign content and outside references', () => {
-		const dirty = `<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY x "y">]>
+describe('sanitizeSvg (see svg.test.ts)', () => {
+	it('refuses scripts and images, strips handlers and outside references', () => {
+		expect(() => sanitizeSvg('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect/></svg>')).toThrow(/images or scripts/);
+		const clean = sanitizeSvg(`<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY x "y">]>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" onload="alert(1)" viewBox="0 0 10 10">
-	<script>alert(1)</script><script href="https://evil.example/x.js"/>
 	<style>@import url(https://evil.example/x.css);</style>
-	<foreignObject><iframe src="https://evil.example"></iframe></foreignObject>
 	<a href="javascript:alert(1)"><rect width="10" height="10" ONCLICK='x()' fill="url(https://evil.example/p.svg#p)"/></a>
 	<use xlink:href="https://evil.example/s.svg#a"/><use href="#local"/>
-	<image href="data:image/png;base64,AAAA"/>
 	<animate attributeName="href" to="javascript:alert(1)"/>
 	<circle id="local" r="2" fill="#0e7c7b"/>
-</svg>`;
-		const clean = sanitizeSvg(dirty);
-		expect(clean.startsWith('<svg')).toBe(true);
-		expect(clean.endsWith('</svg>')).toBe(true);
-		for (const bad of ['<script', 'onload', 'ONCLICK', 'onclick', '<style', 'foreignObject', 'iframe', 'javascript:', 'evil.example', 'ENTITY', 'DOCTYPE', '<animate', 'data:image']) {
+</svg>`);
+		for (const bad of ['onload', 'ONCLICK', 'onclick', '<style', 'javascript:', 'evil.example', 'ENTITY', 'DOCTYPE', '<animate']) {
 			expect(clean, bad).not.toContain(bad);
 		}
-		expect(clean).toContain('href="#local"');
-		expect(clean).toContain('<circle id="local"');
+		expect(clean).toContain('<use href="#local"/>');
+		expect(clean).toContain('<circle id="local" r="2" fill="#0e7c7b"/>');
 	});
 	it('rejects what is not a single svg document', () => {
 		expect(() => sanitizeSvg('<div>hi</div>')).toThrow(ApiError);
