@@ -166,3 +166,51 @@ export async function seedPlan(
 		.returning();
 	return row!;
 }
+
+/* ------------------------------------------------------------------ *
+ * Query accounting (perf tests)
+ * ------------------------------------------------------------------ */
+
+export type QueryStats = {
+	/** SQL statements executed */
+	statements: number;
+	/** What D1 would bill as round trips: each statement outside a batch, plus one per `db.batch` */
+	roundTrips: number;
+	reset(): void;
+};
+
+/**
+ * Counts the statements and D1 round trips `db` runs from now on. Wraps the
+ * SQLite handle's `prepare` (Drizzle prepares once per execution) and the
+ * `batch` shim.
+ */
+export function countQueries(db: TestDb): QueryStats {
+	const stats: QueryStats = {
+		statements: 0,
+		roundTrips: 0,
+		reset() {
+			stats.statements = 0;
+			stats.roundTrips = 0;
+		}
+	};
+	const sqlite = db.$sqlite;
+	const prepare = sqlite.prepare.bind(sqlite);
+	let inBatch = 0;
+	sqlite.prepare = ((source: string) => {
+		stats.statements++;
+		if (!inBatch) stats.roundTrips++;
+		return prepare(source);
+	}) as typeof sqlite.prepare;
+	const holder = db as unknown as { batch: (s: unknown[]) => Promise<unknown[]> };
+	const batch = holder.batch;
+	holder.batch = async (statements) => {
+		stats.roundTrips++;
+		inBatch++;
+		try {
+			return await batch(statements);
+		} finally {
+			inBatch--;
+		}
+	};
+	return stats;
+}
