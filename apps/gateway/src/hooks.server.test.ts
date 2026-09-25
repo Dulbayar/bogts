@@ -108,7 +108,7 @@ describe('hooks: security headers', () => {
 });
 
 describe('hooks: public page language', () => {
-	function runPublic(path: string, headers: Record<string, string> = {}, country?: string) {
+	function runPublic(path: string, headers: Record<string, string> = {}, country?: string, contentType = 'text/html') {
 		const url = new URL(`https://payments.test${path}`);
 		const set = vi.fn();
 		const event = {
@@ -120,7 +120,7 @@ describe('hooks: public page language', () => {
 		} as unknown as RequestEvent;
 		const resolve = vi.fn(async (_e: unknown, opts?: { transformPageChunk?: (i: { html: string; done: boolean }) => string }) => {
 			const html = opts?.transformPageChunk?.({ html: '<html lang="%bogts.lang%">', done: true }) ?? '';
-			return new Response(html, { headers: { 'content-type': 'text/html' } });
+			return new Response(html, { headers: { 'content-type': contentType } });
 		});
 		return { event, set, response: handle({ event, resolve: resolve as never }) };
 	}
@@ -129,7 +129,27 @@ describe('hooks: public page language', () => {
 		const { event, set, response } = runPublic('/pay/X?lang=fr', { 'accept-language': 'ru' }, 'MN');
 		expect(await (await response).text()).toBe('<html lang="fr">');
 		expect(event.locals.locale).toBe('fr');
-		expect(set).toHaveBeenCalledWith('bogts_lang', 'fr', expect.objectContaining({ path: '/', httpOnly: true, sameSite: 'lax' }));
+		expect(set).not.toHaveBeenCalled();
+		expect((await response).headers.get('set-cookie')).toBe('bogts_lang=fr; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax; Secure');
+	});
+
+	it('remembers ?lang= only on HTML pages, never on logos, assets or JSON', async () => {
+		let r = runPublic('/no/such/page?lang=es');
+		expect((await r.response).headers.get('set-cookie')).toContain('bogts_lang=es');
+		r = runPublic('/return/X?lang=ru');
+		expect((await r.response).headers.get('set-cookie')).toContain('bogts_lang=ru');
+		for (const [path, type] of [
+			['/brand/logo/abc?lang=fr', 'image/svg+xml'],
+			['/brand/logo/abc?lang=fr', 'text/html'],
+			['/fonts/x.woff2?lang=fr', 'font/woff2'],
+			['/_app/immutable/x.js?lang=fr', 'text/javascript'],
+			['/pay/X/status?lang=fr', 'application/json'],
+			['/v1/invoices?lang=fr', 'text/html'],
+			['/hooks/qpay?lang=fr', 'text/html']
+		]) {
+			r = runPublic(path!, {}, undefined, type);
+			expect((await r.response).headers.get('set-cookie'), path).toBeNull();
+		}
 	});
 
 	it('reads the cookie, then the country, then Accept-Language', async () => {

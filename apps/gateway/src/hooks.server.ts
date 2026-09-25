@@ -56,6 +56,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	// Public pages speak the payer's language; the dashboard is English.
+	let rememberLang: string | null = null;
 	if (area === 'other') {
 		const cookieHeader = event.request.headers.get('cookie') ?? '';
 		const cookie = new RegExp(`(?:^|;\\s*)${LANG_COOKIE}=([^;]*)`).exec(cookieHeader)?.[1] ?? null;
@@ -66,21 +67,26 @@ export const handle: Handle = async ({ event, resolve }) => {
 			acceptLanguage: event.request.headers.get('accept-language')
 		});
 		event.locals.locale = picked.locale;
-		if (picked.fromQuery && picked.locale !== cookie) {
-			event.cookies?.set(LANG_COOKIE, picked.locale, {
-				path: '/',
-				httpOnly: true,
-				secure: url.protocol === 'https:',
-				sameSite: 'lax',
-				maxAge: 60 * 60 * 24 * 365
-			});
-		}
+		if (picked.fromQuery && picked.locale !== cookie) rememberLang = picked.locale;
 	} else {
 		event.locals.locale = 'en';
 	}
 	const lang = area === 'other' ? event.locals.locale : 'en';
 
-	const response = await resolve(event, { transformPageChunk: ({ html }) => html.replace('%bogts.lang%', lang) });
+	let response = await resolve(event, { transformPageChunk: ({ html }) => html.replace('%bogts.lang%', lang) });
+
+	// A `?lang=` choice is remembered only by the HTML pages that offer the
+	// picker (/pay, /return and the public error pages), never by a logo,
+	// an asset or a JSON status poll.
+	if (rememberLang && isLangPage(url.pathname, response)) {
+		const cookie = `${LANG_COOKIE}=${rememberLang}; Path=/; Max-Age=${60 * 60 * 24 * 365}; HttpOnly; SameSite=Lax${url.protocol === 'https:' ? '; Secure' : ''}`;
+		try {
+			response.headers.append('set-cookie', cookie);
+		} catch {
+			response = new Response(response.body, response);
+			response.headers.append('set-cookie', cookie);
+		}
+	}
 
 	// Event delivery, inline: after any /v1 or /hooks request, attempt the
 	// deliveries emitted in the last 2 minutes (usually the ones this request
@@ -93,6 +99,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	return applySecurityHeaders(response, url, area);
 };
+
+/** An HTML page of the public area (not an asset, logo or JSON endpoint). */
+function isLangPage(pathname: string, response: Response): boolean {
+	if (/^\/(_app|brand|fonts)(\/|$)/.test(pathname)) return false;
+	return (response.headers.get('content-type') ?? '').startsWith('text/html');
+}
 
 /** Unexpected errors: log the name only (never a message that might carry a secret). */
 export const handleError: HandleServerError = ({ error, status }) => {
