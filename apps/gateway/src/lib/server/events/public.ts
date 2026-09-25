@@ -6,7 +6,7 @@
  * ISO-8601 UTC string. D1 keeps epoch-ms, including inside `event.data`, so
  * `data` is converted on the way out: top-level keys ending in `At` holding a
  * number (`paidAt`, `nextBillAt`, …) and `period.start` / `period.end`.
- * `@gege/bogts` types mirror exactly this.
+ * `@gege-mn/bogts` types mirror exactly this.
  */
 import type { EventRow } from '../schema';
 import type { EventType } from './emit';

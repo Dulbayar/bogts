@@ -1,5 +1,5 @@
 /**
- * @gege/bogts: the typed API client for a Bogts deployment, plus the webhook
+ * @gege-mn/bogts: the typed API client for a Bogts deployment, plus the webhook
  * signature check. No runtime dependencies; works in Workers, Node >= 18,
  * Deno and Bun. Server side only: it carries a project API key.
  *

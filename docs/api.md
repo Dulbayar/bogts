@@ -2,7 +2,7 @@
 
 The project API lives at `https://<your host>/v1`. It speaks JSON over HTTPS.
 Everything here is also available, typed, through
-[`@gege/bogts`](../packages/client/README.md).
+[`@gege-mn/bogts`](../packages/client/README.md).
 
 - [Conventions](#conventions): auth, idempotency, errors, pagination, formats
 - [Invoices](#invoices)
@@ -158,7 +158,7 @@ differs in any of those fields creates a new invoice, and so does
 
 The response header `Bogts-Reused` is `true` when an existing invoice was
 handed back (200) and `false` for a new one (201); a replay of the same
-`Idempotency-Key` carries it too. `@gege/bogts` returns it as `reused` on the
+`Idempotency-Key` carries it too. `@gege-mn/bogts` returns it as `reused` on the
 result of `invoices.create`.
 
 | Field | Type | |

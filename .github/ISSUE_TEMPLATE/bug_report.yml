@@ -31,7 +31,7 @@ body:
         - Project API (/v1)
         - Webhooks / events
         - Dashboard (/admin)
-        - "@gege/bogts client"
+        - "@gege-mn/bogts client"
         - Deploy / configuration
         - Docs
     validations:

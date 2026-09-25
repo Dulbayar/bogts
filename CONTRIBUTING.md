@@ -13,7 +13,7 @@ in a public issue.
 | Path | What it is |
 |---|---|
 | `apps/gateway` | The Worker: SvelteKit 2 + Svelte 5 on `@sveltejs/adapter-cloudflare`, Drizzle on D1, zod |
-| `packages/client` | `@gege/bogts`: the typed client and webhook verifier, with no runtime dependencies |
+| `packages/client` | `@gege-mn/bogts`: the typed client and webhook verifier, with no runtime dependencies |
 | `docs/` | Design, decisions, contracts, provider notes and the user docs |
 | `scripts/` | Repository tooling |
 
@@ -120,6 +120,23 @@ pnpm lockfile:gateway   # rewrites apps/gateway/pnpm-lock.yaml from the root loc
 ```
 
 and commit both lockfiles. CI fails if the gateway's lockfile is stale.
+
+## Publishing the client
+
+`packages/client` is published to npm as `@gege-mn/bogts`. To release it:
+
+1. Bump `version` in `packages/client/package.json` and move the client's
+   notes in `CHANGELOG.md` from *Unreleased* to the new version.
+2. Publish from the package directory:
+
+   ```sh
+   cd packages/client
+   pnpm publish --access public
+   ```
+
+   `prepublishOnly` builds and tests the package first. The tarball holds only
+   `dist/`, `README.md`, `LICENSE` and `package.json`; check it with
+   `pnpm pack --dry-run`.
 
 ## House rules
 

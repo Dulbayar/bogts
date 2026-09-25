@@ -253,7 +253,7 @@ production wrangler config, in a separate private repo and deploy each with
    app's secrets. They are shown only once. After that, rotate them to get new
    ones. A rotated API key keeps working for 24 hours.
 3. Call the API: see [api.md](api.md) and [webhooks.md](webhooks.md), or use
-   [`@gege/bogts`](../packages/client/README.md).
+   [`@gege-mn/bogts`](../packages/client/README.md).
 
 ## Custom domain
 

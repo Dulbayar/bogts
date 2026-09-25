@@ -11,9 +11,9 @@
 	},
 	"scripts": {
 		"dev": "pnpm --filter @bogts/gateway dev",
-		"build": "pnpm --filter @bogts/gateway build && pnpm --filter @gege/bogts build",
-		"check": "pnpm --filter @bogts/gateway check && pnpm --filter @gege/bogts check",
-		"test": "pnpm --filter @bogts/gateway test && pnpm --filter @gege/bogts test",
+		"build": "pnpm --filter @bogts/gateway build && pnpm --filter @gege-mn/bogts build",
+		"check": "pnpm --filter @bogts/gateway check && pnpm --filter @gege-mn/bogts check",
+		"test": "pnpm --filter @bogts/gateway test && pnpm --filter @gege-mn/bogts test",
 		"deploy": "pnpm --filter @bogts/gateway run deploy",
 		"lockfile:gateway": "node scripts/gateway-lockfile.mjs"
 	}

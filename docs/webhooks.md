@@ -196,11 +196,11 @@ Bogts-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>
 
 ### TypeScript
 
-With [`@gege/bogts`](../packages/client/README.md), for any Fetch-API runtime
+With [`@gege-mn/bogts`](../packages/client/README.md), for any Fetch-API runtime
 (Workers, SvelteKit, Hono, Deno, Bun, Node 18+):
 
 ```ts
-import { constructEvent, BogtsSignatureError } from '@gege/bogts';
+import { constructEvent, BogtsSignatureError } from '@gege-mn/bogts';
 
 export async function POST(request: Request): Promise<Response> {
 	let event;

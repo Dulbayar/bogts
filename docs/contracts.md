@@ -8,7 +8,7 @@ file first.
 - `apps/gateway`: SvelteKit 2 + Svelte 5 (runes), `@sveltejs/adapter-cloudflare`,
   Drizzle ORM on D1, zod 4 for input validation, vitest 4 + better-sqlite3 for
   tests (a real SQLite DB built from the migrations, never a mock DB).
-- `packages/client`: `@gege/bogts`, with no runtime dependencies; it
+- `packages/client`: `@gege-mn/bogts`, with no runtime dependencies; it
   works in Workers, Node and browsers (server side only: it carries an API key).
 - Versions: svelte ^5.56, kit ^2.63, adapter-cloudflare ^7.2,
   vite ^8, vitest ^4.1, wrangler ^4.131, drizzle-orm ^0.45, drizzle-kit ^0.31,
@@ -219,7 +219,7 @@ is only a hint, notifications that never arrive. Code against these.
 - **Paid twice**: `settleInvoice` looks for the first-paid other invoice of
   the same purchase; the `invoice.paid` data then carries
   `duplicateOfInvoiceId` (optional field of `InvoiceEventData`, mirrored in
-  `@gege/bogts`). After the commit it records `invoice.duplicate_payment`
+  `@gege-mn/bogts`). After the commit it records `invoice.duplicate_payment`
   (also when two settle at the same instant and the field was missed).
   Overview's "Needs attention" shows "N references paid twice: refund one"
   (activity from the last 30 days, `PAID_TWICE_WINDOW_MS`), linking to
@@ -329,7 +329,7 @@ The object shapes:
 - **Event:** `{ id, object: 'event', type, createdAt, data }`
 
 The request bodies:
-- `POST /v1/invoices`: `{ provider, amount, reference, description, returnUrl?, expiresIn? (seconds, 60–86400, default 1800), metadata?, reuse? (default true) }` → 201 new, or 200 with the reused pending invoice; response header `Bogts-Reused: true|false` (also on idempotent replays). `@gege/bogts` `invoices.create` returns `Invoice & { reused: boolean }` (`CreatedInvoice`; from the status when the header is absent)
+- `POST /v1/invoices`: `{ provider, amount, reference, description, returnUrl?, expiresIn? (seconds, 60–86400, default 1800), metadata?, reuse? (default true) }` → 201 new, or 200 with the reused pending invoice; response header `Bogts-Reused: true|false` (also on idempotent replays). `@gege-mn/bogts` `invoices.create` returns `Invoice & { reused: boolean }` (`CreatedInvoice`; from the status when the header is absent)
 - `POST /v1/subscriptions`: `{ plan, customerRef, email?, returnUrl }`
 - `POST /v1/charges`: `{ subscriptionId, amount, reference }` (charges the subscription's card)
 - `POST /v1/invoices/:id/cancel` and `DELETE /v1/subscriptions/:id` take no body.

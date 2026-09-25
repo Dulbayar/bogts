@@ -32,9 +32,9 @@ jobs:
       - name: Gateway tests
         run: pnpm --filter @bogts/gateway test
       - name: Client tests
-        run: pnpm --filter @gege/bogts test
+        run: pnpm --filter @gege-mn/bogts test
       - name: Client build
-        run: pnpm --filter @gege/bogts build
+        run: pnpm --filter @gege-mn/bogts build
       - name: Gateway build
         run: pnpm --filter @bogts/gateway build
 

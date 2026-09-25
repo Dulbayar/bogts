@@ -1,4 +1,4 @@
-# @gege/bogts
+# @gege-mn/bogts
 
 The typed client for [Bogts](https://github.com/gege-mn/bogts) («Богц»), the
 open-source, self-hosted payment gateway for Mongolia (Bonum and QPay), plus the
@@ -9,13 +9,13 @@ webhook signature check.
 - Use it on the server only, because it carries your project's API key.
 
 ```sh
-pnpm add @gege/bogts
+pnpm add @gege-mn/bogts
 ```
 
 ## The client
 
 ```ts
-import { Bogts, BogtsError } from '@gege/bogts';
+import { Bogts, BogtsError } from '@gege-mn/bogts';
 
 const bogts = new Bogts({
 	apiKey: env.BOGTS_API_KEY, // bgk_…
@@ -86,7 +86,7 @@ Delivery is at least once, so **process each `event.id` only once**.
 
 ```ts
 // src/routes/webhooks/bogts/+server.ts
-import { constructEvent, BogtsSignatureError } from '@gege/bogts';
+import { constructEvent, BogtsSignatureError } from '@gege-mn/bogts';
 import { env } from '$env/dynamic/private';
 
 export async function POST({ request }) {
@@ -120,7 +120,7 @@ export async function POST({ request }) {
 
 ```ts
 import { Hono } from 'hono';
-import { verifyWebhook, BogtsSignatureError } from '@gege/bogts';
+import { verifyWebhook, BogtsSignatureError } from '@gege-mn/bogts';
 
 const app = new Hono<{ Bindings: { BOGTS_WEBHOOK_SECRET: string } }>();
 

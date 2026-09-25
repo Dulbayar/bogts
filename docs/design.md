@@ -125,7 +125,7 @@ A provider whose credentials are left empty is simply switched off.
 
 This is a pnpm monorepo:
 - `apps/gateway`: SvelteKit on Cloudflare Workers
-- `packages/client`: `@gege/bogts`, the typed API client plus a
+- `packages/client`: `@gege-mn/bogts`, the typed API client plus a
   webhook signature helper
 
 The license is Apache-2.0. The Deploy button sits at the top of the README.

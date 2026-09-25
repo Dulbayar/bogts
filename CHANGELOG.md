@@ -27,7 +27,7 @@ The first release: one Cloudflare Worker for Bonum and QPay.
   reconciling.
 - **Dashboard** at `/admin`, behind Cloudflare Access or a password. It fails
   closed when neither is configured.
-- **`@gege/bogts`**: a typed client, `verifyWebhook` and `constructEvent`.
+- **`@gege-mn/bogts`**: a typed client, `verifyWebhook` and `constructEvent`.
 - **Deploy to Cloudflare** button, D1 migrations applied on every deploy, and
   documentation: self-hosting, API, webhooks, providers.
 
@@ -39,7 +39,7 @@ The first release: one Cloudflare Worker for Bonum and QPay.
   creating another (`201`), unless `reuse: false`. A reference should identify
   exactly one purchase; a shared reference with different contents is a
   different purchase. The `Bogts-Reused: true|false` response header says
-  which, and `@gege/bogts` returns it as `reused` from `invoices.create`.
+  which, and `@gege-mn/bogts` returns it as `reused` from `invoices.create`.
 - **Other invoices closed once one is paid**: the purchase's other pending
   invoices are cancelled (no event) in the background; a QPay one only once
   QPay confirms the cancel, else it stays pending for its expiry check.

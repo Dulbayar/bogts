@@ -67,7 +67,7 @@ const attemptsOf = (db: TestDb, id: string) =>
 
 /**
  * Minimal Bogts-Signature check, local so this app stays self-contained for the
- * Deploy button. Interop with @gege/bogts's verifyWebhook is tested in
+ * Deploy button. Interop with @gege-mn/bogts's verifyWebhook is tested in
  * packages/client/test/interop.test.ts.
  */
 async function verifyWebhook(body: string, header: string | null, secret: string) {

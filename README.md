@@ -44,17 +44,17 @@ straight to your own merchant accounts. Bogts never holds funds.
   projects, plans and usage. It is protected by Cloudflare Access or a
   password, and it refuses to run with neither.
 - **Runs on the free plan.** One Worker and one D1 database, with no Queues.
-- **`@gege/bogts`:** a typed client and a webhook signature check, with no
+- **`@gege-mn/bogts`:** a typed client and a webhook signature check, with no
   runtime dependencies.
 
 ## 60-second integration
 
 ```sh
-pnpm add @gege/bogts
+pnpm add @gege-mn/bogts
 ```
 
 ```ts
-import { Bogts, constructEvent } from '@gege/bogts';
+import { Bogts, constructEvent } from '@gege-mn/bogts';
 
 const bogts = new Bogts({ apiKey: env.BOGTS_API_KEY, baseUrl: 'https://pay.example.com' });
 
