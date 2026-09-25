@@ -7,7 +7,8 @@
  *    unconfigured deploy never runs open.
  * 3. The `/admin` gate: an unauthenticated request is redirected to
  *    `/admin/login` (the login page itself is open).
- * 4. Security headers on every response.
+ * 4. The public pages' language (`locals.locale`, and `<html lang>`).
+ * 5. Security headers on every response.
  */
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { errorJson } from '$lib/server/api/errors';
@@ -16,6 +17,7 @@ import { getDb } from '$lib/server/db';
 import { tryLoadConfigCached } from '$lib/server/env';
 import { deliverFresh } from '$lib/server/events/deliver';
 import { ADMIN_LOGIN_PATH, applySecurityHeaders, areaOf, isLoginPath } from '$lib/server/gate';
+import { LANG_COOKIE, pickLocale } from '$lib/i18n/public/detect';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const { url } = event;
@@ -53,7 +55,32 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	const response = await resolve(event);
+	// Public pages speak the payer's language; the dashboard is English.
+	if (area === 'other') {
+		const cookieHeader = event.request.headers.get('cookie') ?? '';
+		const cookie = new RegExp(`(?:^|;\\s*)${LANG_COOKIE}=([^;]*)`).exec(cookieHeader)?.[1] ?? null;
+		const picked = pickLocale({
+			query: url.searchParams.get('lang'),
+			cookie,
+			country: event.platform?.cf?.country,
+			acceptLanguage: event.request.headers.get('accept-language')
+		});
+		event.locals.locale = picked.locale;
+		if (picked.fromQuery && picked.locale !== cookie) {
+			event.cookies?.set(LANG_COOKIE, picked.locale, {
+				path: '/',
+				httpOnly: true,
+				secure: url.protocol === 'https:',
+				sameSite: 'lax',
+				maxAge: 60 * 60 * 24 * 365
+			});
+		}
+	} else {
+		event.locals.locale = 'en';
+	}
+	const lang = area === 'other' ? event.locals.locale : 'en';
+
+	const response = await resolve(event, { transformPageChunk: ({ html }) => html.replace('%bogts.lang%', lang) });
 
 	// Event delivery, inline: after any /v1 or /hooks request, attempt the
 	// deliveries emitted in the last 2 minutes (usually the ones this request

@@ -106,3 +106,48 @@ describe('hooks: security headers', () => {
 		expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
 	});
 });
+
+describe('hooks: public page language', () => {
+	function runPublic(path: string, headers: Record<string, string> = {}, country?: string) {
+		const url = new URL(`https://payments.test${path}`);
+		const set = vi.fn();
+		const event = {
+			url,
+			request: new Request(url, { headers }),
+			platform: { env: configured, ctx: { waitUntil: vi.fn() }, cf: country ? { country } : undefined },
+			locals: {},
+			cookies: { set }
+		} as unknown as RequestEvent;
+		const resolve = vi.fn(async (_e: unknown, opts?: { transformPageChunk?: (i: { html: string; done: boolean }) => string }) => {
+			const html = opts?.transformPageChunk?.({ html: '<html lang="%bogts.lang%">', done: true }) ?? '';
+			return new Response(html, { headers: { 'content-type': 'text/html' } });
+		});
+		return { event, set, response: handle({ event, resolve: resolve as never }) };
+	}
+
+	it('?lang= wins, is remembered, and sets <html lang>', async () => {
+		const { event, set, response } = runPublic('/pay/X?lang=fr', { 'accept-language': 'ru' }, 'MN');
+		expect(await (await response).text()).toBe('<html lang="fr">');
+		expect(event.locals.locale).toBe('fr');
+		expect(set).toHaveBeenCalledWith('bogts_lang', 'fr', expect.objectContaining({ path: '/', httpOnly: true, sameSite: 'lax' }));
+	});
+
+	it('reads the cookie, then the country, then Accept-Language', async () => {
+		let r = runPublic('/pay/X', { cookie: 'a=1; bogts_lang=es', 'accept-language': 'ru' }, 'MN');
+		await r.response;
+		expect(r.event.locals.locale).toBe('es');
+		expect(r.set).not.toHaveBeenCalled();
+		r = runPublic('/pay/X', { 'accept-language': 'en-US,en;q=0.9' }, 'MN');
+		await r.response;
+		expect(r.event.locals.locale).toBe('mn');
+		r = runPublic('/pay/X', { 'accept-language': 'zh-CN' }, 'CN');
+		await r.response;
+		expect(r.event.locals.locale).toBe('zh-Hans');
+	});
+
+	it('keeps the dashboard in English', async () => {
+		const { response } = runPublic('/admin/login?lang=fr');
+		const res = await response;
+		expect(await res.text()).toBe('<html lang="en">');
+	});
+});

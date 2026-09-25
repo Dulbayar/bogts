@@ -1,11 +1,14 @@
 import type { AdminIdentity } from '$lib/server/auth/admin';
 import type { DB } from '$lib/server/db';
 import type { Config, Env } from '$lib/server/env';
+import type { Locale } from '$lib/i18n/public';
 
 declare global {
 	namespace App {
 		interface Platform {
 			env: Env;
+			/** Cloudflare's request metadata; `country` picks Mongolian for public pages */
+			cf?: { country?: string | null };
 		}
 		interface Locals {
 			/** The Worker bindings. Set by hooks on every request. */
@@ -22,6 +25,8 @@ declare global {
 			admin: AdminIdentity | null;
 			/** `ctx.waitUntil`: work that may outlive the response (inline event delivery). */
 			waitUntil: (promise: Promise<unknown>) => void;
+			/** The public pages' language (`?lang=`, cookie, country, Accept-Language; see i18n/public/detect.ts). The dashboard is English. */
+			locale: Locale;
 		}
 		interface Error {
 			code?: string;
