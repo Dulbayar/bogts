@@ -13,6 +13,7 @@ import type {
 	Charge,
 	CreateChargeInput,
 	CreateInvoiceInput,
+	ChangePlanInput,
 	CreateSubscriptionInput,
 	CreatedInvoice,
 	EventListParams,
@@ -158,7 +159,14 @@ export class Bogts {
 			this.request<Subscription>('DELETE', `/v1/subscriptions/${enc(id)}`, opts),
 		/** Starts a card replacement; send the customer to the returned `redirectUrl`. */
 		replaceCard: (id: string, opts?: RequestOptions) =>
-			this.request<Subscription>('POST', `/v1/subscriptions/${enc(id)}/card`, opts)
+			this.request<Subscription>('POST', `/v1/subscriptions/${enc(id)}/card`, opts),
+		/**
+		 * Moves the subscription to another plan when its paid period ends
+		 * (`nextBillAt`), on the saved card; no charge now, no proration.
+		 * `POST /v1/subscriptions/:id/plan`
+		 */
+		changePlan: (id: string, input: ChangePlanInput, opts?: RequestOptions) =>
+			this.request<Subscription>('POST', `/v1/subscriptions/${enc(id)}/plan`, { ...opts, body: input })
 	};
 
 	readonly charges = {

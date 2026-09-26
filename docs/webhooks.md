@@ -45,6 +45,7 @@ Bogts reports facts. What a fact entitles your customer to is up to your app.
 | `subscription.payment_failed` | A payment failed. With `reason: "payment_failed"` a renewal was declined and Bonum retries on the plan's schedule. With `reason: "checkout_failed"` the first card step failed (or Bonum refused the checkout) and the subscription is `failed`. With `reason: "renewal_missing"` no renewal arrived for the period and Bonum shows none billed; the subscription is `past_due`. |
 | `subscription.cancelled` | The subscription ended. `reason` says why. |
 | `subscription.card_changed` | A card replacement finished. `cardMask` is the new card. |
+| `subscription.plan_changed` | A plan change was made at Bonum. `plan` is the new plan, billed from `nextBillAt` for `amount`; `previousPlan` is the old one. The current period is unchanged: keep access to its end. |
 | `charge.succeeded` | A saved-card charge went through. |
 | `charge.failed` | A saved-card charge was declined. `failureCode` says why. |
 | `charge.reversed` | A charge was reversed. |
@@ -90,11 +91,12 @@ The dashboard's Overview lists it under "Needs attention".
 
 | Field | |
 |---|---|
-| `amount` | The amount charged, on `active` (the first charge) and `renewed`. Absent otherwise. |
+| `amount` | The amount charged, on `active` (the first charge) and `renewed`. On `plan_changed`, the new plan's amount, charged on `nextBillAt`. Absent otherwise. |
 | `period` | The paid period, on `active` and `renewed`. Extend access to `period.end`. |
 | `nextBillAt` | When Bonum will charge next, or `null`. |
 | `reason` | On `cancelled`: `cancelled_by_project` (your `DELETE`), `cancelled_by_admin` (the dashboard), `retries_exhausted` (Bonum gave up after failed renewals) or `provider_cancelled` (reconciliation found it ended at Bonum, whose webhook never arrived). On `payment_failed`: `payment_failed`, `checkout_failed` or `renewal_missing`. |
 | `cardMask` | On `active` and `card_changed`. |
+| `previousPlan` | On `plan_changed`: the plan key billed before. |
 
 ### `data` for `charge.*`
 

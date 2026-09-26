@@ -81,6 +81,7 @@ export async function cronStatus(db: DB, now = Date.now()) {
 		purge: byName.get('purge') ?? null,
 		lateCheck: byName.get('late_check') ?? null,
 		reconcile: byName.get('reconcile') ?? null,
+		planChange: byName.get('plan_change') ?? null,
 		stale: !tick || now - tick.lastRunAt > CRON_STALE_MS,
 		dueDeliveries: due?.n ?? 0
 	};

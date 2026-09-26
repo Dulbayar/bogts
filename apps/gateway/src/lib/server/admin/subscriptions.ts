@@ -1,6 +1,7 @@
 /** Dashboard reads for subscriptions. */
 import { asc, count, desc, eq, gt, lt, sql } from 'drizzle-orm';
-import { batchSelect, type DB } from '../db';
+import { alias } from 'drizzle-orm/sqlite-core';
+import { batchSelect, leftJoined, type DB } from '../db';
 import {
 	SUBSCRIPTION_STATUSES,
 	card,
@@ -13,6 +14,8 @@ import {
 } from '../schema';
 import { all, finishPage, PAGE_SIZE, scoped, subjectEventsFrom, subjectEventsStatements, type Cursor, type Page } from './common';
 import { timelineFrom, timelineStatements } from './timeline';
+
+const nextPlan = alias(plan, 'next_plan');
 
 export const SUBSCRIPTION_TILES = ['active', 'past_due', 'pending', 'cancelled'] as const;
 
@@ -99,10 +102,11 @@ export async function getSubscriptionDetail(db: DB, id: string) {
 		sql`(select ${sql.identifier(column.name)} from ${subscription} where ${subscription.id} = ${id})`;
 	const [[row], cards, payments, charges, eventRows, deliveryRows, ...timelineRows] = await db.batch([
 		db
-			.select(batchSelect({ subscription, plan, project: { id: project.id, name: project.name } }))
+			.select(batchSelect({ subscription, plan, project: { id: project.id, name: project.name }, nextPlan: { key: nextPlan.key } }))
 			.from(subscription)
 			.innerJoin(plan, eq(plan.id, subscription.planId))
 			.innerJoin(project, eq(project.id, subscription.projectId))
+			.leftJoin(nextPlan, eq(nextPlan.id, subscription.nextPlanId))
 			.where(eq(subscription.id, id))
 			.limit(1),
 		// Cards this customer has had on this project, newest first (the history).
@@ -144,6 +148,10 @@ export async function getSubscriptionDetail(db: DB, id: string) {
 			currentPeriodStart: sub.currentPeriodStart,
 			currentPeriodEnd: sub.currentPeriodEnd,
 			nextBillAt: sub.nextBillAt,
+			/** A plan change scheduled for `nextBillAt`, not yet made at Bonum */
+			nextPlanKey: leftJoined(row.nextPlan, 'key')?.key ?? null,
+			/** A Bonum subscription a plan change replaced, still to delete */
+			retiringProviderSubscriptionId: sub.retiringProviderSubscriptionId,
 			cancelledAt: sub.cancelledAt,
 			createdAt: sub.createdAt
 		},

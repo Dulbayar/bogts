@@ -28,6 +28,7 @@ See [self-hosting → Bonum setup](../self-hosting.md#bonum-setup). In short:
 | Hosted invoice (`POST /v1/invoices`, `provider: "bonum"`) | Create Invoice (All-in-one): Bonum's checkout page with QPay, card, WeChat and SonoShop. The result arrives as a `PAYMENT` webhook. |
 | Subscription (`POST /v1/subscriptions`) | Create Card Token with a subscription (`payNow: true`), after checking the plan against List Of Payment Plans. The customer enters the card on Bonum's page. |
 | Card replacement (`POST /v1/subscriptions/:id/card`) | Change Subscription Token (Create New Token) |
+| Plan change (`POST /v1/subscriptions/:id/plan`) | Subscribe the saved card token to the new plan (`payNow: false`, `cycleValue` = `nextBillAt`'s day), then Delete Subscription on the old one. See [Plan changes](#plan-changes). |
 | Cancel (`DELETE /v1/subscriptions/:id`) | Delete Subscription (`/delete`) **with `planId`**. Plain unsubscribe would still take the next payment. |
 | Charge (`POST /v1/charges`) | Purchase with the saved card token. The answer can be immediate or queued; a queued result arrives as a `TOKEN-PAYMENT` webhook. |
 | Reverse (`POST /v1/charges/:id/reverse`) | Rollback Purchase |
@@ -74,6 +75,40 @@ minted at, and each sample's local time is that plus 8 hours (for example
 Bogts never shows or relies on Bonum's `message` text or purchase `errorCode`
 strings; Bonum's docs advise against both. Events carry short machine codes
 instead.
+
+## Plan changes
+
+Bonum plans have a fixed amount, and Bonum has no endpoint that changes a
+subscription's plan or amount (checked against the docs, the public API page
+and the sandbox, 2026-09-26: plans are created only in the merchant portal).
+So Bogts changes plan at the end of the paid period, without proration:
+
+1. **Subscribe** the card token already saved to the new plan with
+   `payNow: false`, `cycles: null` and `cycleValue` = `nextBillAt`'s day
+   (weekday, day of month or day of year, Ulaanbaatar time). Bonum bills a
+   `payNow: false` subscription first on the next day whose `cycleValue`
+   matches, so this is done only when that day is `nextBillAt`, never on the
+   cycle day itself (Bonum would charge during the call), and not within 6 h
+   of `nextBillAt`. A longer plan fits at once; a shorter one waits in
+   `subscription.next_plan_id` for the hourly job (minute 15, `plan_change`).
+2. Bonum's answer must put `nextBillAt` on the same date. If not, the new
+   Bonum subscription is deleted again and the change stays scheduled.
+3. The subscription takes the new plan and Bonum subscription id
+   (`billingAnchor` and `nextBillAt` = Bonum's `nextBillAt`), and emits
+   `subscription.plan_changed`.
+4. **Delete Subscription** on the old one (with its `planId`). If that fails,
+   the old id waits in `retiring_provider_subscription_id` and the hourly job
+   deletes it; it cannot bill before `nextBillAt`, at least 6 h away. Cancel
+   deletes it too.
+
+A webhook that names the old Bonum subscription id (an `UNSUBSCRIBED` after
+the delete, say) is not matched to the subscription by its `transactionId`, so
+it cannot end the new mandate.
+
+**Still to confirm on the sandbox** (needs a tokenized card):
+whether Subscribe accepts a card token that is already subscribed to another
+plan, the exact `nextBillAt` Bonum answers for a future `cycleValue`
+(especially days 29–31 and day 366), and whether Delete sends `UNSUBSCRIBED`.
 
 ## When a renewal webhook never arrives
 

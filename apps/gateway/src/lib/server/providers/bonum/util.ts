@@ -138,6 +138,30 @@ export function cycleValue(interval: PlanInterval, now: number): number {
 	return Math.floor((today - start) / 86_400_000) + 1;
 }
 
+/** 00:00 Ulaanbaatar time on `at`'s local date. */
+export function ubDayStart(at: number): number {
+	const local = new Date(at + UB_OFFSET_MS);
+	return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - UB_OFFSET_MS;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The first billing date Bonum gives a `payNow: false` Subscribe made at `now`
+ * with `value` as its `cycleValue`: the first later Ulaanbaatar date whose
+ * `cycleValue` is `value` (00:00 UB), or null when today is itself that day,
+ * because Bonum then charges during the Subscribe call. Null too when no date
+ * within 400 days matches (a day of month or of year that never comes).
+ */
+export function firstBillDate(interval: PlanInterval, value: number, now: number): number | null {
+	const today = ubDayStart(now);
+	if (cycleValue(interval, today) === value) return null;
+	for (let day = today + DAY_MS; day <= today + 400 * DAY_MS; day += DAY_MS) {
+		if (cycleValue(interval, day) === value) return day;
+	}
+	return null;
+}
+
 /** A follow-up link is only trusted on `https://*.bonum.mn`. */
 export function checkedFollowUpLink(value: unknown, operation: string): string {
 	if (typeof value !== 'string' || !value) throw new BonumError(502, operation, 'invalid_response');

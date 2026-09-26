@@ -77,6 +77,7 @@ describe('Bogts client', () => {
 		await bogts.subscriptions.list();
 		await bogts.subscriptions.cancel('sub_1');
 		await bogts.subscriptions.replaceCard('sub_1');
+		await bogts.subscriptions.changePlan('sub_1', { plan: 'pro-yearly' });
 		await bogts.charges.get('ch_1');
 		await bogts.charges.list({ limit: 2 });
 		await bogts.charges.reverse('ch_1');
@@ -91,6 +92,7 @@ describe('Bogts client', () => {
 			'GET /v1/subscriptions',
 			'DELETE /v1/subscriptions/sub_1',
 			'POST /v1/subscriptions/sub_1/card',
+			'POST /v1/subscriptions/sub_1/plan',
 			'GET /v1/charges/ch_1',
 			'GET /v1/charges?limit=2',
 			'POST /v1/charges/ch_1/reverse',

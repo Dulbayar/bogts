@@ -8,7 +8,7 @@
  * newest entry at or after the plan's last edit is its status, so no schema
  * change is needed and every check leaves a trail.
  */
-import { and, count, desc, eq, gte, inArray, isNull, ne, sql, type SQLWrapper } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNull, ne, or, sql, type SQLWrapper } from 'drizzle-orm';
 import { ApiError } from '../api/errors';
 import { issueApiKey } from '../auth/api-key';
 import { encrypt } from '../crypto';
@@ -389,7 +389,10 @@ export async function getPlan(db: DB, projectId: string, planId: string): Promis
 
 /** Deletes a plan nobody subscribed to; otherwise switches it off (new checkouts stop). */
 export async function removePlan(db: DB, projectId: string, planId: string): Promise<'deleted' | 'deactivated'> {
-	const [used] = await db.select({ n: count() }).from(subscription).where(eq(subscription.planId, planId));
+	const [used] = await db
+		.select({ n: count() })
+		.from(subscription)
+		.where(or(eq(subscription.planId, planId), eq(subscription.nextPlanId, planId)));
 	if ((used?.n ?? 0) > 0) {
 		await db.update(plan).set({ active: false }).where(and(eq(plan.id, planId), eq(plan.projectId, projectId)));
 		return 'deactivated';

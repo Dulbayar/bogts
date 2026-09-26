@@ -23,6 +23,7 @@ export const EVENT_TYPES = [
 	'subscription.payment_failed',
 	'subscription.cancelled',
 	'subscription.card_changed',
+	'subscription.plan_changed',
 	'charge.succeeded',
 	'charge.failed',
 	'charge.reversed'
@@ -74,6 +75,8 @@ export interface SubscriptionEventData {
 		| (string & {});
 	/** subscription.card_changed / active: the card's display mask */
 	cardMask?: string;
+	/** subscription.plan_changed: the plan key it billed before; `plan` is the one it bills from `nextBillAt` */
+	previousPlan?: string;
 }
 
 export interface ChargeEventData {
@@ -98,6 +101,7 @@ export interface EventDataMap {
 	'subscription.payment_failed': SubscriptionEventData;
 	'subscription.cancelled': SubscriptionEventData;
 	'subscription.card_changed': SubscriptionEventData;
+	'subscription.plan_changed': SubscriptionEventData;
 	'charge.succeeded': ChargeEventData;
 	'charge.failed': ChargeEventData;
 	'charge.reversed': ChargeEventData;

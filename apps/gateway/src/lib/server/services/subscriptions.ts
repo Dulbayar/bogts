@@ -8,6 +8,7 @@
  * webhook (`providers/bonum/webhook.ts`); nothing here trusts the browser.
  */
 import { and, desc, eq, inArray, lt, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import { z } from 'zod';
 import { recordActivity } from '../activity';
 import { ApiError, notFound } from '../api/errors';
@@ -29,7 +30,10 @@ import { BonumError, bonumConfigOf, bonumCall, bonumRequest, providerError, unwr
 import { validatePlan } from '../providers/bonum/plans';
 import { bonumItem, checkedFollowUpLink, cycleValue } from '../providers/bonum/util';
 import { nowOf, type ServiceContext } from './context';
+import { retireReplaced } from './plan-change';
 import { iso, ListQuery, pageOf, type ListPage } from './paging';
+
+const nextPlanTable = alias(planTable, 'next_plan');
 
 /** A pending checkout older than this no longer blocks a new one (it is marked failed). */
 export const PENDING_CHECKOUT_TTL_MS = 60 * 60 * 1000;
@@ -73,11 +77,18 @@ export type SubscriptionJson = {
 	card: { mask: string; expiry: string | null; bank: string | null } | null;
 	currentPeriod: { start: string; end: string } | null;
 	nextBillAt: string | null;
+	/** A plan change scheduled for the end of the paid period: `plan` bills from `at` */
+	nextPlan: { plan: string; at: string } | null;
 	cancelledAt: string | null;
 	createdAt: string;
 };
 
-export function subscriptionJson(sub: Subscription, plan: Pick<Plan, 'key'>, card: Card | null | undefined): SubscriptionJson {
+export function subscriptionJson(
+	sub: Subscription,
+	plan: Pick<Plan, 'key'>,
+	card: Card | null | undefined,
+	nextPlan?: Pick<Plan, 'key'> | null
+): SubscriptionJson {
 	const redirecting = sub.status === 'pending' || sub.pendingTransactionId !== null;
 	return {
 		id: sub.id,
@@ -93,6 +104,7 @@ export function subscriptionJson(sub: Subscription, plan: Pick<Plan, 'key'>, car
 				? { start: iso(sub.currentPeriodStart)!, end: iso(sub.currentPeriodEnd)! }
 				: null,
 		nextBillAt: iso(sub.nextBillAt),
+		nextPlan: nextPlan && sub.nextPlanId !== null && sub.nextBillAt !== null ? { plan: nextPlan.key, at: iso(sub.nextBillAt)! } : null,
 		cancelledAt: iso(sub.cancelledAt),
 		createdAt: iso(sub.createdAt)!
 	};
@@ -136,8 +148,17 @@ async function loadOwned(ctx: ServiceContext, projectId: string, id: string): Pr
 }
 
 async function toJson(ctx: ServiceContext, sub: Subscription): Promise<SubscriptionJson> {
-	const [plan, card] = await Promise.all([loadPlan(ctx, sub.planId), loadCard(ctx, sub.cardId)]);
-	return subscriptionJson(sub, plan, card);
+	const [plan, card, nextPlan] = await Promise.all([
+		loadPlan(ctx, sub.planId),
+		loadCard(ctx, sub.cardId),
+		sub.nextPlanId ? loadPlan(ctx, sub.nextPlanId) : null
+	]);
+	return subscriptionJson(sub, plan, card, nextPlan);
+}
+
+/** The API view of subscription `id`, read fresh. */
+export async function subscriptionJsonOf(ctx: ServiceContext, id: string): Promise<SubscriptionJson> {
+	return toJson(ctx, await reload(ctx, id));
 }
 
 async function reload(ctx: ServiceContext, id: string): Promise<Subscription> {
@@ -222,6 +243,10 @@ export async function createSubscription(
 		nextBillAt: null,
 		billingAnchor: null,
 		reconciledAt: null,
+		nextPlanId: null,
+		planChangeTriedAt: null,
+		retiringProviderSubscriptionId: null,
+		retiringProviderPlanId: null,
 		cancelledAt: null,
 		returnUrl: input.returnUrl,
 		createdAt: now,
@@ -317,17 +342,18 @@ export async function listSubscriptions(
 	if (q.customerRef) where.push(eq(subTable.customerRef, q.customerRef));
 	if (q.status) where.push(eq(subTable.status, q.status));
 	const rows = await ctx.db
-		.select({ sub: subTable, plan: { key: planTable.key }, card: cardTable })
+		.select({ sub: subTable, plan: { key: planTable.key }, card: cardTable, nextPlan: { key: nextPlanTable.key } })
 		.from(subTable)
 		.innerJoin(planTable, eq(planTable.id, subTable.planId))
 		.leftJoin(cardTable, eq(cardTable.id, subTable.cardId))
+		.leftJoin(nextPlanTable, eq(nextPlanTable.id, subTable.nextPlanId))
 		.where(and(...where))
 		.orderBy(desc(subTable.id))
 		.limit(q.limit + 1);
 	return pageOf(
 		rows.map((r) => ({ id: r.sub.id, ...r })),
 		q.limit,
-		(r) => subscriptionJson(r.sub, r.plan, r.card)
+		(r) => subscriptionJson(r.sub, r.plan, r.card, r.nextPlan?.key ? r.nextPlan : null)
 	);
 }
 
@@ -364,6 +390,8 @@ export async function cancelSubscription(
 	}
 	const plan = await loadPlan(ctx, sub.planId);
 	const card = await loadCard(ctx, sub.cardId);
+	// A Bonum subscription an earlier plan change replaced goes too, while the card token is still here.
+	if (sub.retiringProviderSubscriptionId) await retireReplaced(ctx, sub);
 
 	const token = await cardToken(ctx, card);
 	let status: number;
@@ -447,6 +475,8 @@ export async function endMandate(
 					status: 'cancelled',
 					cancelledAt: now,
 					nextBillAt: null,
+					nextPlanId: null,
+					planChangeTriedAt: null,
 					pendingTransactionId: null,
 					followUpLink: null,
 					updatedAt: now

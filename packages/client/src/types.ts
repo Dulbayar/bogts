@@ -98,8 +98,15 @@ export interface Subscription {
 	card: { mask: string; expiry: string | null; bank: string | null } | null;
 	currentPeriod: { start: IsoDate; end: IsoDate } | null;
 	nextBillAt: IsoDate | null;
+	/** A plan change scheduled for the end of the paid period: `plan` bills from `at` */
+	nextPlan: { plan: string; at: IsoDate } | null;
 	cancelledAt: IsoDate | null;
 	createdAt: IsoDate;
+}
+
+export interface ChangePlanInput {
+	/** The plan key to bill from the end of the paid period; the current plan undoes a scheduled change */
+	plan: string;
 }
 
 export interface CreateSubscriptionInput {
@@ -148,6 +155,7 @@ export const EVENT_TYPES = [
 	'subscription.payment_failed',
 	'subscription.cancelled',
 	'subscription.card_changed',
+	'subscription.plan_changed',
 	'charge.succeeded',
 	'charge.failed',
 	'charge.reversed'
@@ -201,6 +209,8 @@ export interface SubscriptionEventData {
 		| (string & {});
 	/** subscription.card_changed / active: the card's display mask */
 	cardMask?: string;
+	/** subscription.plan_changed: the plan key it billed before; `plan` is the one it bills from `nextBillAt` */
+	previousPlan?: string;
 }
 
 export interface ChargeEventData {
@@ -225,6 +235,7 @@ export interface EventDataMap {
 	'subscription.payment_failed': SubscriptionEventData;
 	'subscription.cancelled': SubscriptionEventData;
 	'subscription.card_changed': SubscriptionEventData;
+	'subscription.plan_changed': SubscriptionEventData;
 	'charge.succeeded': ChargeEventData;
 	'charge.failed': ChargeEventData;
 	'charge.reversed': ChargeEventData;

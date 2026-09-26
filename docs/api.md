@@ -230,6 +230,7 @@ ids (see [self-hosting](self-hosting.md#bonum-setup)).
   "card": { "mask": "5150 23** **** 4778", "expiry": "2026/11", "bank": "Голомт банк" },
   "currentPeriod": { "start": "2026-09-25T14:10:00.000Z", "end": "2026-10-25T14:10:00.000Z" },
   "nextBillAt": "2026-10-25T14:10:00.000Z",
+  "nextPlan": null,
   "cancelledAt": null,
   "createdAt": "2026-09-25T14:08:12.000Z"
 }
@@ -240,6 +241,8 @@ ids (see [self-hosting](self-hosting.md#bonum-setup)).
 | `status` | `pending` (waiting for the card), `active`, `past_due` (a renewal failed and Bonum is retrying), `cancelled` or `failed` (the card step never completed). |
 | `redirectUrl` | Bonum's card page. It is set only while the subscription is `pending`, or while a card replacement is pending. |
 | `card` | The card's display details. The card token itself never leaves Bogts. |
+| `plan` | The plan Bonum bills next. After a plan change is made at Bonum, this is already the new plan, although the current period was paid on the old one. |
+| `nextPlan` | A [plan change](#change-the-plan) that is scheduled but not yet made at Bonum: `{ "plan": "<key>", "at": "<nextBillAt>" }`, else `null`. |
 
 ### Create a subscription
 
@@ -290,6 +293,44 @@ is `502 provider_error` and nothing changes, so you can retry.
 whose `redirectUrl` is now Bonum's card page. Send the customer there. When the
 new card is saved you get `subscription.card_changed`. If the customer gives up,
 the old card stays in place.
+
+### Change the plan
+
+`POST /v1/subscriptions/:id/plan` → `200` with the subscription. The
+subscription moves to another plan **when its paid period ends**
+(`nextBillAt`), on the card already saved. Nothing is charged now and nothing
+is prorated: the current period stays as paid, and the new plan's first
+charge is on `nextBillAt`, for the new plan's amount and period.
+
+| Field | Type | |
+|---|---|---|
+| `plan` | string | required. The plan key. The plan the subscription is on undoes a scheduled change. |
+
+```sh
+curl https://pay.example.com/v1/subscriptions/01K5XA2N8C4H6J7K9M1P3Q5R7S/plan \
+  -H "Authorization: Bearer $BOGTS_API_KEY" \
+  -H "Idempotency-Key: plan-user_123-yearly" \
+  -H "Content-Type: application/json" \
+  -d '{"plan":"pro-yearly"}'
+```
+
+Bonum has no way to change a subscription's plan, so Bogts subscribes the same
+card to the new Bonum plan with its first bill on `nextBillAt`, then deletes the
+old Bonum subscription. Bonum can only put that first bill up to one cycle of
+the new plan ahead, so:
+
+- **to a longer plan** (monthly → yearly) the change is made at once, and you
+  get `subscription.plan_changed`;
+- **to a shorter plan** (yearly → monthly) it is scheduled: the answer shows
+  `nextPlan`, and Bogts makes it within the last cycle of the new plan before
+  `nextBillAt` (the last month, for monthly), then emits
+  `subscription.plan_changed`.
+
+Until it is made, the change can be undone by asking for the current plan.
+Cancelling drops it. Only an `active` subscription can change plan (`409`
+otherwise); the new plan is checked against Bonum first (`409 plan_mismatch`).
+If Bonum refuses at the time, the change stays scheduled and Bogts retries
+hourly; see the subscription's timeline in `/admin`.
 
 ## Charges
 

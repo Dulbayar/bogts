@@ -241,6 +241,14 @@ export const subscription = sqliteTable(
 		billingAnchor: integer('billing_anchor'),
 		/** When renewal reconciliation last claimed this subscription to ask Bonum about it (`reconcile.ts`) */
 		reconciledAt: integer('reconciled_at'),
+		/** A plan change scheduled for the end of the paid period (`nextBillAt`); applied by `plan-change.ts` */
+		nextPlanId: text('next_plan_id').references(() => plan.id),
+		/** When the scheduled plan change was last tried at Bonum (the cron retries hourly) */
+		planChangeTriedAt: integer('plan_change_tried_at'),
+		/** A Bonum subscription replaced by a plan change that is still to be deleted at Bonum */
+		retiringProviderSubscriptionId: text('retiring_provider_subscription_id'),
+		/** The Bonum plan id of that subscription: Delete Subscription needs it in its body */
+		retiringProviderPlanId: integer('retiring_provider_plan_id'),
 		cancelledAt: integer('cancelled_at'),
 		returnUrl: text('return_url'),
 		createdAt: integer('created_at').notNull(),
@@ -255,7 +263,10 @@ export const subscription = sqliteTable(
 		index('subscription_status_bill_idx').on(t.status, t.nextBillAt),
 		// Subscriptions per plan (plans tab, removing a plan).
 		index('subscription_plan_idx').on(t.planId),
-		index('subscription_card_idx').on(t.cardId)
+		index('subscription_card_idx').on(t.cardId),
+		// Scheduled plan changes and replaced Bonum subscriptions still to delete (`plan-change.ts`).
+		index('subscription_next_plan_idx').on(t.nextBillAt).where(sql`${t.nextPlanId} is not null`),
+		index('subscription_retiring_idx').on(t.updatedAt).where(sql`${t.retiringProviderSubscriptionId} is not null`)
 	]
 );
 

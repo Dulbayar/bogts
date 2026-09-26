@@ -22,6 +22,14 @@ change the API; the notes will say how to upgrade.
 
 ### Added
 
+- **Plan changes**: `POST /v1/subscriptions/:id/plan` `{ plan }` moves a
+  subscription to another plan when its paid period ends, on the saved card,
+  with no charge now and no proration. A change to a longer plan is made at
+  Bonum at once; a change to a shorter one is scheduled (`nextPlan` on the
+  subscription) and made by a new hourly cron job (`plan_change`, minute 15)
+  in the new plan's last cycle before `nextBillAt`. New event
+  `subscription.plan_changed` (`previousPlan`). Client:
+  `subscriptions.changePlan(id, { plan })`. Migration `0008_plan_change`.
 - **Favicon on public pages**: `/pay`, `/return` and the public error pages
   use the payee's logo, else the company logo, else the Bogts logo (always the
   Bogts logo, with an amber dot, in sandbox).

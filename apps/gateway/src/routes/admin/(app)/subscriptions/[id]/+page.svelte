@@ -153,6 +153,8 @@
 				<div><dt>Subscription id</dt><dd><IdChip id={sub.id} full /></dd></div>
 				{#if sub.providerSubscriptionId}<div><dt>Bonum subscription id</dt><dd><IdChip id={sub.providerSubscriptionId} /></dd></div>{/if}
 				<div><dt>Plan</dt><dd><a class="mono" href="/admin/projects/{data.project.id}?tab=plans">{data.plan.key}</a></dd></div>
+				{#if sub.nextPlanKey && sub.nextBillAt}<div><dt>Next plan</dt><dd><span class="mono">{sub.nextPlanKey}</span> from {formatDate(sub.nextBillAt)}</dd></div>{/if}
+				{#if sub.retiringProviderSubscriptionId}<div><dt>Replaced Bonum id</dt><dd><IdChip id={sub.retiringProviderSubscriptionId} /> <span class="subtle">still to delete</span></dd></div>{/if}
 				<div><dt>Project</dt><dd><a href="/admin/projects/{data.project.id}">{data.project.name}</a></dd></div>
 				<div><dt>Customer ref</dt><dd><span class="mono">{sub.customerRef}</span><CopyButton value={sub.customerRef} label="Copy customer ref" /></dd></div>
 				<div><dt>Email</dt><dd>{#if sub.email}{sub.email}{:else}<span class="subtle">—</span>{/if}</dd></div>

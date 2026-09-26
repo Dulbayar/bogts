@@ -346,7 +346,7 @@ is only a hint, notifications that never arrive. Code against these.
 The object shapes:
 - **Invoice:** `{ id, object: 'invoice', provider: 'qpay'|'bonum', status, amount, currency, reference, description, payUrl, redirectUrl, qr: { text, image } | null, deeplinks: Deeplink[], returnUrl, expiresAt, paidAt, metadata, createdAt }`
   - `payUrl` is our hosted page `${PUBLIC_ORIGIN}/pay/:id`, for QPay, or Bonum's `redirectUrl` for Bonum.
-- **Subscription:** `{ id, object: 'subscription', plan: '<key>', customerRef, email, status, redirectUrl, card: { mask, expiry, bank } | null, currentPeriod: { start, end } | null, nextBillAt, cancelledAt, createdAt }`
+- **Subscription:** `{ id, object: 'subscription', plan: '<key>', customerRef, email, status, redirectUrl, card: { mask, expiry, bank } | null, currentPeriod: { start, end } | null, nextBillAt, nextPlan: { plan, at } | null, cancelledAt, createdAt }`
   - `redirectUrl` is non-null only while the subscription is `pending`, or while a card replacement is pending.
 - **Charge:** `{ id, object: 'charge', status, amount, currency, reference, subscriptionId, failureCode, createdAt }`
 - **Event:** `{ id, object: 'event', type, createdAt, data }`

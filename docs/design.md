@@ -66,7 +66,7 @@ retrying with exponential backoff for up to 3 days until the project answers 2xx
 
 The event types are:
 - `invoice.paid`, `invoice.expired`, `invoice.failed`
-- `subscription.active`, `subscription.renewed`, `subscription.payment_failed`, `subscription.cancelled`, `subscription.card_changed`
+- `subscription.active`, `subscription.renewed`, `subscription.payment_failed`, `subscription.cancelled`, `subscription.card_changed`, `subscription.plan_changed`
 - `charge.succeeded`, `charge.failed`, `charge.reversed`
 
 Each event is `{ id, object: 'event', type, createdAt, data }`; `data` carries the

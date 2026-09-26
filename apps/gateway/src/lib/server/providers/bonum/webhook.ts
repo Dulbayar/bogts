@@ -165,11 +165,29 @@ async function subBy(ctx: ServiceContext, column: 'tokenize' | 'pending' | 'prov
 	return row;
 }
 
-/** A mandate from a SUBSCRIPTION-PAYMENT / UNSUBSCRIBED body: Bonum's subscription id, else our tokenization id. */
+/**
+ * A mandate from a SUBSCRIPTION-PAYMENT / UNSUBSCRIBED body: Bonum's
+ * subscription id, else our tokenization id. The fallback never answers for a
+ * message naming a different Bonum subscription than the mandate's own: that
+ * is one a plan change replaced (`services/plan-change.ts`), and its
+ * UNSUBSCRIBED must not end the mandate that replaced it.
+ */
 async function mandateOf(ctx: ServiceContext, body: Body) {
-	return (
-		(await subBy(ctx, 'provider', idOf(body.subscriptionId))) ?? (await subBy(ctx, 'tokenize', str(body.transactionId)))
-	);
+	const providerId = idOf(body.subscriptionId);
+	const byProvider = await subBy(ctx, 'provider', providerId);
+	if (byProvider) return byProvider;
+	const byTransaction = await subBy(ctx, 'tokenize', str(body.transactionId));
+	if (byTransaction && providerId && byTransaction.providerSubscriptionId && byTransaction.providerSubscriptionId !== providerId) {
+		await note(ctx, {
+			projectId: byTransaction.projectId,
+			subjectType: 'subscription',
+			subjectId: byTransaction.id,
+			kind: 'bonum.webhook.replaced_subscription',
+			summary: `Ignored a message for Bonum subscription ${safe(providerId)}, which this subscription no longer uses`
+		});
+		return undefined;
+	}
+	return byTransaction;
 }
 
 /** The MNT amount in a CARD-TOKEN `amounts[]`, raw (so 0.01 can be told apart). */

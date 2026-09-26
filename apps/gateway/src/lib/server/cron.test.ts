@@ -15,7 +15,10 @@ describe('jobsFor', () => {
 	});
 	it('reconciles renewals once an hour, at minute 5', () => {
 		expect(jobsFor(at(5)).map((j) => j.name)).toEqual(['deliver', 'reconcile']);
-		expect(jobsFor(at(15)).map((j) => j.name)).toEqual(['deliver']);
+		expect(jobsFor(at(25)).map((j) => j.name)).toEqual(['deliver']);
+	});
+	it('makes scheduled plan changes once an hour, at minute 15', () => {
+		expect(jobsFor(at(15)).map((j) => j.name)).toEqual(['deliver', 'plan_change']);
 	});
 	it('purges at the top of the hour', () => {
 		expect(jobsFor(at(0)).map((j) => j.name)).toEqual(['deliver', 'sweep', 'late_check', 'purge']);
