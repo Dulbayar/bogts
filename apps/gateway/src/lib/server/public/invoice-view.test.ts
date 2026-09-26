@@ -41,7 +41,7 @@ describe('publicInvoice', () => {
 		const id = await seed();
 		const v = await publicInvoice(db, id, NOW);
 		expect(v).toMatchObject({ amount: 49_000, description: 'Pro plan', status: 'pending', projectName: 'Nomad Coffee' });
-		expect(v!.deeplinks).toEqual([{ name: 'Khan bank', link: 'khanbank://q?qPay_QRcode=x' }]);
+		expect(v!.deeplinks).toEqual([{ name: 'khanbank', description: 'Khan bank', link: 'khanbank://q?qPay_QRcode=x' }]);
 		expect(v!.qr!.path).toMatch(/^M\d+ \d+h\d+v1h-\d+z/);
 		const json = JSON.stringify(v);
 		expect(json).not.toContain('secret-order-ref');
