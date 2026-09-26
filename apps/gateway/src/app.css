@@ -6,7 +6,7 @@
  * self-hosted (static/fonts, OFL) and cover Mongolian Cyrillic (Ө ө Ү ү) and
  * the tugrik sign. The accent comes from Settings → Branding: `lib/brand.ts`
  * renders `--brand-*-l` / `--brand-*-d` on :root and the theme blocks below
- * map them, with Bogts' оюу turquoise as the fallback.
+ * map them, with the logo's pouch blue as the fallback.
  */
 
 @font-face {
@@ -140,12 +140,12 @@
 	--fg-muted: #4b5354;
 	--fg-subtle: #5f6769;
 
-	--accent: var(--brand-accent-l, #0e7c7b);
-	--accent-hover: var(--brand-accent-hover-l, #0b6160);
+	--accent: var(--brand-accent-l, #0d47d2);
+	--accent-hover: var(--brand-accent-hover-l, #0b3db5);
 	--fg-on-accent: var(--brand-on-accent-l, #ffffff);
-	--accent-text: var(--brand-accent-text-l, #0d7776);
-	--accent-subtle: var(--brand-accent-subtle-l, #e7f2f2);
-	--accent-border: var(--brand-accent-border-l, #b2d5d5);
+	--accent-text: var(--brand-accent-text-l, #0d47d2);
+	--accent-subtle: var(--brand-accent-subtle-l, #e7edfb);
+	--accent-border: var(--brand-accent-border-l, #b2c4f1);
 	--focus-ring: var(--accent-text);
 
 	/* The coin: only in the mark and the paid moment. */
@@ -194,12 +194,12 @@
 		--fg: #e9eeee;
 		--fg-muted: #a3adae;
 		--fg-subtle: #87918f;
-		--accent: var(--brand-accent-d, #0e7c7b);
-		--accent-hover: var(--brand-accent-hover-d, #0b6160);
+		--accent: var(--brand-accent-d, #1757f1);
+		--accent-hover: var(--brand-accent-hover-d, #0d4adc);
 		--fg-on-accent: var(--brand-on-accent-d, #ffffff);
-		--accent-text: var(--brand-accent-text-d, #12a19f);
-		--accent-subtle: var(--brand-accent-subtle-d, #152b2b);
-		--accent-border: var(--brand-accent-border-d, #134444);
+		--accent-text: var(--brand-accent-text-d, #5a88f5);
+		--accent-subtle: var(--brand-accent-subtle-d, #16253e);
+		--accent-border: var(--brand-accent-border-d, #163475);
 		--brass: #d4a54a;
 		--brass-deep: #a67a25;
 		--success-fg: #4cc473;
@@ -240,12 +240,12 @@
 	--fg: #e9eeee;
 	--fg-muted: #a3adae;
 	--fg-subtle: #87918f;
-	--accent: var(--brand-accent-d, #0e7c7b);
-	--accent-hover: var(--brand-accent-hover-d, #0b6160);
+	--accent: var(--brand-accent-d, #1757f1);
+	--accent-hover: var(--brand-accent-hover-d, #0d4adc);
 	--fg-on-accent: var(--brand-on-accent-d, #ffffff);
-	--accent-text: var(--brand-accent-text-d, #12a19f);
-	--accent-subtle: var(--brand-accent-subtle-d, #152b2b);
-	--accent-border: var(--brand-accent-border-d, #134444);
+	--accent-text: var(--brand-accent-text-d, #5a88f5);
+	--accent-subtle: var(--brand-accent-subtle-d, #16253e);
+	--accent-border: var(--brand-accent-border-d, #163475);
 	--brass: #d4a54a;
 	--brass-deep: #a67a25;
 	--success-fg: #4cc473;

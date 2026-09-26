@@ -48,7 +48,7 @@ describe('palette', () => {
 		expect(p.dark.onAccent).not.toBe('#ffffff');
 	});
 
-	it('falls back to the Bogts turquoise', () => {
+	it('falls back to the Bogts blue', () => {
 		expect(palette(null)).toEqual(palette(DEFAULT_ACCENT));
 		expect(palette('nonsense')).toEqual(palette(DEFAULT_ACCENT));
 	});

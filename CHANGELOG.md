@@ -5,6 +5,14 @@ All notable changes to Bogts are recorded here. The format follows
 [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may
 change the API; the notes will say how to upgrade.
 
+## [Unreleased]
+
+### Changed
+
+- **Accent**: Bogts' default accent is now the pouch blue from the logo
+  (`#0d47d2`), replacing the turquoise `#0e7c7b`. Deployments with their own
+  accent in Settings → Branding are unchanged.
+
 ## [0.1.0] - 2026-09-26
 
 The first release: one Cloudflare Worker for Bonum and QPay.

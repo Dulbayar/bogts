@@ -953,7 +953,7 @@ the brand name (`{name}`), so sentences read correctly for any name.
 - **Accent:** Settings → Branding sets one colour. `lib/brand.ts` derives
   light and dark variants and checks them for AA (fill 3:1 against the card,
   label and link text 4.5:1), rendered as `--brand-*-l/-d` on `:root` and
-  mapped in `app.css`. Without one, Bogts' own оюу turquoise `#0e7c7b`.
+  mapped in `app.css`. Without one, Bogts' own blue `#0d47d2` (the pouch in the logo).
   Use `--accent` for fills and `--accent-text` for text.
 - **Mark:** the Bogts coin pouch (`components/brand/BogtsMark.svelte`), shown
   whenever no company logo is set. Brass (`--brass`) is reserved for the
