@@ -10,9 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@gege-mn/bogts"><img src="https://img.shields.io/npm/v/@gege-mn/bogts?color=0e3fc4" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/@gege-mn/bogts"><img src="https://img.shields.io/npm/v/@gege-mn/bogts?color=0d47d2" alt="npm"></a>
   <a href="https://github.com/gege-mn/bogts/actions/workflows/ci.yml"><img src="https://github.com/gege-mn/bogts/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-0e3fc4" alt="Apache-2.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-0d47d2" alt="Apache-2.0"></a>
 </p>
 
 *Bogts* («Богц», said roughly "bawgts") is the traditional Mongolian coin pouch:

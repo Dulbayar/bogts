@@ -45,7 +45,7 @@
 			aria-describedby="accent-note"
 		/>
 		{#if hex.trim() !== ''}
-			<button type="button" class="btn sm ghost" onclick={() => (hex = '')}>Use Bogts turquoise</button>
+			<button type="button" class="btn sm ghost" onclick={() => (hex = '')}>Use Bogts blue</button>
 		{/if}
 	</div>
 

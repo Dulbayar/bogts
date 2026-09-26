@@ -13,8 +13,8 @@
  * Settings preview in the browser.
  */
 
-/** Bogts' own accent: оюу, the turquoise of Mongolian jewellery. */
-export const DEFAULT_ACCENT = '#0e7c7b';
+/** Bogts' own accent: the blue of the pouch in the logo. */
+export const DEFAULT_ACCENT = '#0d47d2';
 
 /** The surfaces the accent must read on (keep in sync with app.css). */
 export const SURFACES = {
