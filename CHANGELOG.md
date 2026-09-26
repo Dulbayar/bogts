@@ -5,7 +5,7 @@ All notable changes to Bogts are recorded here. The format follows
 [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may
 change the API; the notes will say how to upgrade.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-09-26
 
 The first release: one Cloudflare Worker for Bonum and QPay.
 
@@ -21,6 +21,10 @@ The first release: one Cloudflare Worker for Bonum and QPay.
   refused. **Apply migration `0007_branding` before deploying.**
 - **QPay bank logos**: the hosted `/pay` page shows each bank app's logo (from
   QPay's `qpay.mn` hosts only), with the bank's initial as a fallback.
+- **Bank grid**: a 3×3 grid of eight bank apps (Social Pay, Khan Bank, M Bank,
+  TDB, Xac Bank, Capitron Bank, Monpay, State Bank 3.0, then QPay's order for
+  any that are missing) and a "More" tile for the rest, with one-line,
+  title-cased names.
 - **Public pages in 6 languages**: `/pay`, `/return` and the public error
   pages speak Mongolian (the default), English, French, Russian, Simplified
   Chinese and Spanish, picked by `?lang=`, a cookie, country or
@@ -49,6 +53,7 @@ The first release: one Cloudflare Worker for Bonum and QPay.
 - **Dashboard** at `/admin`, behind Cloudflare Access or a password. It fails
   closed when neither is configured.
 - **`@gege-mn/bogts`**: a typed client, `verifyWebhook` and `constructEvent`.
+  ESM only; Node ≥ 20, Workers, Deno and Bun.
 - **Deploy to Cloudflare** button, D1 migrations applied on every deploy, and
   documentation: self-hosting, API, webhooks, providers.
 

@@ -1,11 +1,17 @@
+<img src="https://raw.githubusercontent.com/gege-mn/bogts/main/.github/assets/logo.png" width="96" height="96" align="right" alt="Bogts logo">
+
 # @gege-mn/bogts
+
+[![npm](https://img.shields.io/npm/v/@gege-mn/bogts?color=0e3fc4)](https://www.npmjs.com/package/@gege-mn/bogts)
+[![bundle size](https://img.shields.io/bundlephobia/minzip/@gege-mn/bogts?color=0e3fc4)](https://bundlephobia.com/package/@gege-mn/bogts)
 
 The typed client for [Bogts](https://github.com/gege-mn/bogts) («Богц»), the
 open-source, self-hosted payment gateway for Mongolia (Bonum and QPay), plus the
 webhook signature check.
 
 - No runtime dependencies. It uses `fetch` and Web Crypto only.
-- Works in Cloudflare Workers, Node ≥ 18, Deno and Bun.
+- ESM only (`import`); Node ≥ 20.19 can also `require()` it.
+- Works in Cloudflare Workers, Node ≥ 20, Deno and Bun.
 - Use it on the server only, because it carries your project's API key.
 
 ```sh

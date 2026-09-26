@@ -14,6 +14,8 @@ export const zhHans: PublicMessages = {
 	'pay.checkNow': '我已付款，查询',
 	'pay.checking': '正在查询…',
 	'pay.notYet': '尚未收到付款',
+	'pay.more': '更多',
+	'pay.moreCount': '{count} 家银行',
 
 	'state.paid.title': '付款成功',
 	'state.paid.at': '付款时间：{time}',

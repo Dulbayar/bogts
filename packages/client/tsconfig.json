@@ -1,7 +1,7 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
-		// Works in Workers, Node >= 18 and browsers: fetch + Web Crypto only, no Node or DOM types.
+		// Works in Workers, Node >= 20 and browsers: fetch + Web Crypto only, no Node or DOM types.
 		"lib": ["es2024", "dom"],
 		"rootDir": "src",
 		"outDir": "dist",

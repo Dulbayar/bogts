@@ -22,6 +22,8 @@ export const mn = {
 	'pay.checkNow': 'Төлсөн, шалгах',
 	'pay.checking': 'Шалгаж байна…',
 	'pay.notYet': 'Төлбөр хараахан орж ирээгүй байна',
+	'pay.more': 'Бусад',
+	'pay.moreCount': '{count} банк',
 
 	'state.paid.title': 'Төлбөр амжилттай',
 	'state.paid.at': 'Төлсөн: {time}',

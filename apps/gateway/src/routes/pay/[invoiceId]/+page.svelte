@@ -5,10 +5,11 @@
 	can't scan your own screen); wide screens get the QR first.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import PublicShell from '$lib/components/PublicShell.svelte';
 	import PublicState from '$lib/components/public/PublicState.svelte';
+	import { BANKS_SHOWN, bankTiles } from '$lib/banks';
 	import { FINAL, fetchStatus, pollStatus, type PolledStatus } from '$lib/checkout';
 	import { formatCountdown, truncateMiddle } from '$lib/format';
 	import { formatAmountIn, formatDateTimeIn, formatMoneyIn, translator } from '$lib/i18n/public';
@@ -73,6 +74,24 @@
 		setTimeout(() => (checkNote = ''), 4000);
 	}
 
+	/** Popular apps first; past a full 3×3 the rest wait behind "More". */
+	const tiles = $derived(bankTiles(inv.deeplinks));
+	/** Nine fit as they are: a More tile hiding one bank would be pointless. */
+	const collapsible = $derived(tiles.length > BANKS_SHOWN + 1);
+	let expanded = $state(false);
+	const collapsed = $derived(collapsible && !expanded);
+	const hiddenCount = $derived(tiles.length - BANKS_SHOWN);
+	/** The More tile's folder look: four logos of the banks it hides, or nothing. */
+	const peek = $derived.by(() => {
+		const withLogo = tiles.slice(BANKS_SHOWN).filter((d) => d.logo);
+		return withLogo.length >= 4 ? withLogo.slice(0, 4) : [];
+	});
+	async function showAll() {
+		expanded = true;
+		await tick();
+		document.querySelector<HTMLAnchorElement>('#bank-list li.extra a')?.focus();
+	}
+
 	const initial = (name: string) => Array.from(name.trim())[0]?.toUpperCase() ?? '?';
 
 	/**
@@ -94,6 +113,8 @@
 	<meta name="robots" content="noindex" />
 	{#if shown === 'pending'}
 		<noscript><meta http-equiv="refresh" content="15" /></noscript>
+		<!-- No JS, no More button: every bank shows. -->
+		<noscript><style>.banks .extra { display: grid !important; } .banks .more-item { display: none !important; }</style></noscript>
 	{:else if shown === 'paid' && inv.returnUrl}
 		<meta http-equiv="refresh" content="3;url={inv.returnUrl}" />
 	{/if}
@@ -157,20 +178,37 @@
 							<span class="wide-only">{inv.qr ? t('pay.orBanks') : t('pay.banks')}</span>
 							<span class="narrow-only">{t('pay.banks')}</span>
 						</h2>
-						<ul>
-							{#each inv.deeplinks as d (d.link)}
-								<li>
+						<ul id="bank-list" class:collapsed class:expanded>
+							{#each tiles as d, i (d.link)}
+								{@const extra = collapsible && i >= BANKS_SHOWN}
+								<li class:extra style:--i={extra ? i - BANKS_SHOWN : null}>
 									<a href={d.link} rel="external noreferrer">
 										<span class="bank-logo" aria-hidden="true">
-											<span class="initial">{initial(d.name)}</span>
+											<span class="initial">{initial(d.label)}</span>
 											{#if d.logo}
 												<img src={d.logo} alt="" width="44" height="44" loading="lazy" referrerpolicy="no-referrer" {@attach letterOnError} />
 											{/if}
 										</span>
-										<span class="bank-name">{d.name}</span>
+										<span class="bank-name">{d.label}</span>
 									</a>
 								</li>
 							{/each}
+							{#if collapsed}
+								<li class="more-item">
+									<button type="button" class="more" aria-expanded={expanded} aria-controls="bank-list" onclick={showAll}>
+										{#if peek.length}
+											<span class="bank-logo peek" aria-hidden="true">
+												{#each peek as p (p.link)}
+													<img src={p.logo} alt="" width="16" height="16" loading="lazy" referrerpolicy="no-referrer" {@attach letterOnError} />
+												{/each}
+											</span>
+										{:else}
+											<span class="bank-logo" aria-hidden="true"><Icon name="more" /></span>
+										{/if}
+										<span class="bank-name">{t('pay.more')}<span class="sr-only"> ({t('pay.moreCount', { count: hiddenCount })})</span></span>
+									</button>
+								</li>
+							{/if}
 						</ul>
 					</section>
 				{/if}
@@ -281,17 +319,23 @@
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: var(--space-2);
 	}
-	.banks a {
+	.banks li {
+		display: grid;
+	}
+	.banks a,
+	.banks .more {
 		display: grid;
 		justify-items: center;
-		align-content: start;
+		align-content: center;
 		gap: var(--space-2);
-		min-height: 96px;
-		padding: var(--space-3) var(--space-1) var(--space-2);
+		width: 100%;
+		min-height: 92px;
+		padding: var(--space-3) var(--space-2);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-lg);
 		background: var(--bg);
 		color: var(--fg);
+		font: inherit;
 		text-decoration: none;
 		text-align: center;
 		transition:
@@ -299,13 +343,33 @@
 			box-shadow var(--dur-fast) var(--ease),
 			transform var(--dur-fast) var(--ease);
 	}
-	.banks a:hover {
+	.banks .more {
+		cursor: pointer;
+		appearance: none;
+	}
+	.banks a:hover,
+	.banks .more:hover {
 		border-color: var(--accent-border);
 		box-shadow: var(--shadow-md);
 		transform: translateY(-1px);
 	}
-	.banks a:active {
+	.banks a:active,
+	.banks .more:active {
 		transform: translateY(0) scale(0.98);
+	}
+	.banks a:focus-visible,
+	.banks .more:focus-visible {
+		outline: 2px solid var(--focus-ring);
+		outline-offset: 2px;
+		border-color: var(--accent-border);
+	}
+	/* Past the first eight, hidden until More; a short staggered rise on reveal. */
+	.banks ul.collapsed .extra {
+		display: none;
+	}
+	.banks ul.expanded .extra {
+		animation: rise 320ms var(--ease) both;
+		animation-delay: min(calc(var(--i, 0) * 30ms), 300ms);
 	}
 	.bank-logo {
 		position: relative;
@@ -327,6 +391,22 @@
 		object-fit: cover;
 		background: #fff;
 	}
+	/* An iOS-folder peek at the banks behind More. */
+	.bank-logo.peek {
+		grid-template-columns: repeat(2, 1fr);
+		grid-template-rows: repeat(2, 1fr);
+		place-items: stretch;
+		gap: 3px;
+		padding: 5px;
+		background: var(--bg-muted);
+	}
+	.bank-logo.peek img {
+		position: static;
+		width: 100%;
+		height: 100%;
+		border-radius: 4px;
+		box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--fg) 10%, transparent);
+	}
 	.initial {
 		font-family: var(--font-display);
 		font-weight: var(--weight-semibold);
@@ -336,12 +416,10 @@
 		font-size: var(--text-xs);
 		line-height: 15px;
 		color: var(--fg-muted);
-		overflow-wrap: anywhere;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
+		max-width: 100%;
+		white-space: nowrap;
 		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.qr-toggle {
@@ -507,9 +585,6 @@
 		.narrow-only {
 			display: none;
 		}
-		.banks ul {
-			grid-template-columns: repeat(4, minmax(0, 1fr));
-		}
 		.banks-title::before {
 			content: '';
 			flex: 1;
@@ -520,7 +595,8 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.pulse::after {
+		.pulse::after,
+		.banks ul.expanded .extra {
 			animation: none;
 		}
 	}

@@ -14,6 +14,8 @@ export const ru: PublicMessages = {
 	'pay.checkNow': 'Я оплатил: проверить',
 	'pay.checking': 'Проверяем…',
 	'pay.notYet': 'Оплата ещё не поступила',
+	'pay.more': 'Ещё',
+	'pay.moreCount': 'банков: {count}',
 
 	'state.paid.title': 'Оплата прошла успешно',
 	'state.paid.at': 'Оплачено {time}',

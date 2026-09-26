@@ -14,6 +14,8 @@ export const fr: PublicMessages = {
 	'pay.checkNow': 'J’ai payé : vérifier',
 	'pay.checking': 'Vérification…',
 	'pay.notYet': 'Pas encore reçu',
+	'pay.more': 'Plus',
+	'pay.moreCount': '{count} banques',
 
 	'state.paid.title': 'Paiement réussi',
 	'state.paid.at': 'Payé le {time}',

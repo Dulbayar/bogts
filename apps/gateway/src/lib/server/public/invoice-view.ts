@@ -32,7 +32,8 @@ export type PublicInvoice = {
 	deeplinks: PublicDeeplink[];
 };
 
-export type PublicDeeplink = { name: string; link: string; logo?: string };
+/** QPay's `name` (English, e.g. "Khan bank") and `description` (often Mongolian); the page labels it (`$lib/banks`). */
+export type PublicDeeplink = { name: string; description?: string; link: string; logo?: string };
 
 /**
  * Where QPay serves bank logos (seen in stored deeplinks). The page's CSP
@@ -68,7 +69,8 @@ function safeDeeplink(d: Deeplink): PublicDeeplink | null {
 		const url = new URL(d.link);
 		if (['javascript:', 'data:', 'vbscript:', 'file:', 'blob:'].includes(url.protocol)) return null;
 		const logo = safeLogo(d.logo);
-		return { name: d.description?.trim() || d.name, link: d.link, ...(logo ? { logo } : {}) };
+		const description = d.description?.trim();
+		return { name: d.name.trim() || description || '', ...(description ? { description } : {}), link: d.link, ...(logo ? { logo } : {}) };
 	} catch {
 		return null;
 	}
