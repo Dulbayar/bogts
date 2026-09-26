@@ -955,9 +955,16 @@ the brand name (`{name}`), so sentences read correctly for any name.
   label and link text 4.5:1), rendered as `--brand-*-l/-d` on `:root` and
   mapped in `app.css`. Without one, Bogts' own blue `#0d47d2` (the pouch in the logo).
   Use `--accent` for fills and `--accent-text` for text.
-- **Mark:** the Bogts coin pouch (`components/brand/BogtsMark.svelte`), shown
-  whenever no company logo is set. Brass (`--brass`) is reserved for the
-  coin: the mark and the paid moment.
+- **Mark:** the Bogts logo, the blue pouch tied with an orange cord
+  (`.github/assets/logo.png`, drawn as SVG in `components/brand/favicon.ts`
+  for `BogtsMark.svelte` and the favicons). Always in its own colours, never
+  tinted with the accent: a page shows the company's logo or ours, nothing
+  in between. Used in the "Bogts" footer credit, the paid moment, and
+  wherever no company logo or name is set. Brass (`--brass`) is reserved
+  for the coin (the paid moment, the confirming spinner).
+- **Favicon:** public pages use the payee's logo, else the company's, else
+  the Bogts logo; the dashboard uses the company logo, else ours. In
+  sandbox always ours, with an amber dot.
 - **Logos:** PNG, SVG or WebP, at most 256 KB, stored in D1 (`brand_logo`,
   content-addressed) and served from `/brand/logo/<sha256>` with a year-long
   immutable cache. SVG is sanitised on upload and served sandboxed.

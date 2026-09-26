@@ -1,17 +1,15 @@
 <!--
-	The paid moment: a brass coin drops into the pouch, the pouch settles, a
-	check appears. CSS only, plays once; with reduced motion it is the final
-	frame. Decorative: the page's heading says what happened.
+	The paid moment: a brass coin drops into the Bogts pouch, the pouch
+	settles, a check appears. CSS only, plays once; with reduced motion it is
+	the final frame. Decorative: the page's heading says what happened.
 -->
+<script lang="ts">
+	import BogtsMark from '../brand/BogtsMark.svelte';
+</script>
+
 <div class="moment" aria-hidden="true">
 	<span class="coin"><span class="hole"></span></span>
-	<svg class="pouch" viewBox="0 0 32 32" width="96" height="96">
-		<path d="M11.6 12.6 9.7 7.3c-.3-.9.6-1.6 1.4-1.2l2.3 1.1L16 5l2.6 2.2 2.3-1.1c.8-.4 1.7.3 1.4 1.2l-1.9 5.3z" fill="currentColor" opacity="0.72" />
-		<path d="M11 12.4c-4.5 2.9-6 7.4-5.4 11 .7 4.2 4.8 5.9 10.4 5.9s9.7-1.7 10.4-5.9c.6-3.6-.9-8.1-5.4-11z" fill="currentColor" />
-		<rect x="9.6" y="10.9" width="12.8" height="3.1" rx="1.55" fill="var(--brass)" />
-		<circle cx="16" cy="21.6" r="4.3" fill="var(--brass)" />
-		<rect x="14.55" y="20.15" width="2.9" height="2.9" rx="0.4" fill="currentColor" />
-	</svg>
+	<span class="pouch"><BogtsMark size={96} /></span>
 	<span class="tick">
 		<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
 			><path class="stroke" d="M20 6 9 17l-5-5" /></svg
@@ -21,16 +19,17 @@
 </div>
 
 <style>
+	/* The pouch's width; the top 24px is headroom for the falling coin. */
 	.moment {
 		position: relative;
-		width: 120px;
+		width: 96px;
 		height: 120px;
 		display: grid;
 		place-items: end center;
-		color: var(--accent);
 	}
 	.pouch {
 		display: block;
+		line-height: 0;
 		transform-origin: 50% 90%;
 		animation: settle 520ms 560ms var(--ease-out-back) both;
 	}
@@ -57,8 +56,8 @@
 	}
 	.tick {
 		position: absolute;
-		right: 6px;
-		bottom: 4px;
+		left: 0;
+		bottom: 0;
 		display: grid;
 		place-items: center;
 		width: 34px;
@@ -78,8 +77,8 @@
 	}
 	.ring {
 		position: absolute;
-		right: 6px;
-		bottom: 4px;
+		left: 0;
+		bottom: 0;
 		width: 34px;
 		height: 34px;
 		border-radius: 50%;

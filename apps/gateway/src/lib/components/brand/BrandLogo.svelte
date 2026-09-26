@@ -1,6 +1,6 @@
 <!--
 	A brand's logo: the uploaded image, else a monogram of its name, else the
-	Bogts pouch. Decorative next to the name (the name is always shown too).
+	Bogts logo. Decorative next to the name (the name is always shown too).
 	The image is laid out by height, so a wide wordmark keeps its shape (up to
 	four times as wide as it is tall); one that fails to load shows the
 	monogram instead.
@@ -32,7 +32,7 @@
 {:else if initial}
 	<span class="logo mono" style:--s="{size}px" aria-hidden="true">{initial}</span>
 {:else}
-	<span class="logo mark" style:--s="{size}px"><BogtsMark size={Math.round(size * 0.78)} /></span>
+	<BogtsMark {size} />
 {/if}
 
 <style>
@@ -49,8 +49,7 @@
 		object-fit: contain;
 		border-radius: calc(var(--s) * 0.16);
 	}
-	.mono,
-	.mark {
+	.mono {
 		display: inline-grid;
 		place-items: center;
 		background: var(--accent);
@@ -58,8 +57,6 @@
 		box-shadow:
 			inset 0 1px 0 rgb(255 255 255 / 0.18),
 			inset 0 -1px 0 rgb(0 0 0 / 0.12);
-	}
-	.mono {
 		font-family: var(--font-display);
 		font-weight: var(--weight-semibold);
 		font-size: calc(var(--s) * 0.56);

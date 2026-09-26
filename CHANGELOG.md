@@ -12,6 +12,19 @@ change the API; the notes will say how to upgrade.
 - **Accent**: Bogts' default accent is now the pouch blue from the logo
   (`#0d47d2`), replacing the turquoise `#0e7c7b`. Deployments with their own
   accent in Settings → Branding are unchanged.
+- **Mark**: the payment pages and dashboard show the real Bogts logo (the
+  blue pouch with an orange cord) in its own colours, never tinted with the
+  company accent: in the "Bogts" footer credit, the paid moment, and wherever
+  no company logo is set. The dashboard favicon without a company logo is now
+  this logo instead of an accent tile.
+- **Payment pages**: on wide screens a paid, failed or expired state lines up
+  with the left half (picture on the brand row, heading on the amount line).
+
+### Added
+
+- **Favicon on public pages**: `/pay`, `/return` and the public error pages
+  use the payee's logo, else the company logo, else the Bogts logo (always the
+  Bogts logo, with an amber dot, in sandbox).
 
 ## [0.1.0] - 2026-09-26
 

@@ -50,7 +50,7 @@
 				<BrandLogo src={payee.logoUrl} name={payee.name} size={36} />
 				<span class="payee">{payee.name}</span>
 			{:else}
-				<span class="mark"><BogtsMark size={28} /></span>
+				<BogtsMark size={36} />
 				<span class="payee">Bogts</span>
 			{/if}
 			<span class="grow"></span>
@@ -146,15 +146,6 @@
 		min-width: 0;
 		overflow-wrap: anywhere;
 	}
-	.mark {
-		display: inline-grid;
-		place-items: center;
-		width: 36px;
-		height: 36px;
-		border-radius: 10px;
-		background: var(--accent);
-		color: var(--fg-on-accent);
-	}
 	.grow {
 		flex: 1;
 	}
@@ -206,9 +197,6 @@
 		gap: 4px;
 		font-weight: var(--weight-medium);
 		color: var(--fg-muted);
-	}
-	.by :global(.bogts-mark) {
-		color: var(--accent);
 	}
 	.dot {
 		width: 3px;
@@ -283,6 +271,27 @@
 			max-width: none;
 			margin: 0;
 			padding: var(--space-12) max(var(--space-8), calc(100% - 440px - var(--space-12))) var(--space-10) var(--space-12);
+		}
+		/*
+		 * A state (paid, failed…) lines up with the left half: flush left, its
+		 * picture's top on the brand row, the heading on the amount's line.
+		 * The paid moment's coin headroom hangs above the column.
+		 */
+		.split .action :global(.state) {
+			justify-items: start;
+			text-align: start;
+			padding-top: 0;
+		}
+		.split .action :global(.state .more) {
+			justify-items: start;
+		}
+		.split .action :global(.moment) {
+			margin-top: -24px;
+		}
+		/* Smaller pictures sit at the foot of the pouch's 96px, keeping the heading on that line. */
+		.split .action :global(.state > .icon),
+		.split .action :global(.state > .coin-spin) {
+			margin-top: 32px;
 		}
 		/* The key-fret runs down the seam between the halves. */
 		.split .action::before {
