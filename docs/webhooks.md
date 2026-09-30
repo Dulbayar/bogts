@@ -38,7 +38,7 @@ Bogts reports facts. What a fact entitles your customer to is up to your app.
 | Type | When |
 |---|---|
 | `invoice.paid` | The invoice was paid. This can also follow `invoice.expired` or a cancel, when money arrives late. With `duplicateOfInvoiceId`, the same purchase (an identical request) was already paid by another invoice: refund one. |
-| `invoice.expired` | The invoice passed `expiresAt` unpaid (QPay: checked with QPay at expiry; Bonum: 2 hours after `expiresAt`, since Bonum has no status API). It can still be followed by `invoice.paid`. |
+| `invoice.expired` | The invoice passed `expiresAt` unpaid (a QR invoice, QPay or Bonum: checked with the provider at expiry; a Bonum checkout: 2 hours after `expiresAt`, since that has no status API). It can still be followed by `invoice.paid`. |
 | `invoice.failed` | The provider couldn't create the invoice, or Bonum reported the payment failed. |
 | `subscription.active` | The card was saved and the first period was charged. |
 | `subscription.renewed` | A renewal was charged. `period` is the new period. |

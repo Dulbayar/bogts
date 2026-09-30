@@ -47,7 +47,10 @@ A **QR invoice** is different: the QR lookup is a production endpoint, so the
 sweep asks it once, at `expiresAt`, and settles a `PAID` answer (after the same
 amount check as a webhook). The payment is recorded under the id `qr/create`
 returned, never the lookup's own numeric `invoiceId`, so the check and a late
-`PAYMENT` webhook are one ledger row.
+`PAYMENT` webhook are one ledger row. A QR stays payable at Bonum until its
+own expiry even after a cancel here, so a cancel asks the lookup first (paid:
+settled, `409`), and a QR invoice that ended `expired` or `cancelled` gets the
+same one late check QPay's do, about 24 hours on.
 
 What the sandbox showed for QR invoices (2026-09-30, shared terminal
 17171119): `qr/create` answers `{ data: { invoiceId, qrCode, qrImage, links[] } }`

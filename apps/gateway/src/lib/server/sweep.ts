@@ -22,9 +22,11 @@
  * pending with `swept_at` set. Such rows are expired (without a second check)
  * once their claim is `STALE_CLAIM_MS` old.
  *
- * The late check (`lateCheckExpired`, same cadence): QPay keeps accepting
- * payment on an old QR and its callback can be lost, so a QPay invoice that
- * ended `expired` or `cancelled` (by the project, or as the sibling of a paid
+ * The late check (`lateCheckExpired`, same cadence): a QR can be paid after
+ * the invoice ended — QPay keeps accepting payment on an old QR, and a Bonum
+ * QR cancelled in our system stays payable at Bonum until its own expiry —
+ * and the callback can be lost. So a QR invoice (QPay, Bonum QR) that ended
+ * `expired` or `cancelled` (by the project, or as the sibling of a paid
  * invoice) is asked ONE more time, about `LATE_CHECK_AFTER_MS` (24 h) after
  * its expiry, claimed through `late_checked_at` the same way. Paid → settled,
  * `invoice.paid` follows `invoice.expired` (or the silent cancel).
@@ -194,8 +196,8 @@ async function claimLate(db: DB, id: string, now: number): Promise<boolean> {
  */
 export async function lateCheckExpired(db: DB, config: Config, now: number): Promise<number> {
 	const ctx: ServiceContext = { db, config, now };
-	const check = invoiceAdapters.qpay.check;
-	if (!check || !config.providers.qpay) return 0;
+	const providers = checkingProviders().filter((p) => config.providers[p]);
+	if (providers.length === 0) return 0;
 	let checked = 0;
 	try {
 		const due = await db
@@ -205,7 +207,8 @@ export async function lateCheckExpired(db: DB, config: Config, now: number): Pro
 				and(
 					inArray(invoiceTable.status, LATE_CHECK_STATUSES),
 					isNull(invoiceTable.lateCheckedAt),
-					eq(invoiceTable.provider, 'qpay'),
+					eq(invoiceTable.method, 'qr'),
+					inArray(invoiceTable.provider, providers),
 					isNotNull(invoiceTable.providerInvoiceId),
 					lte(invoiceTable.expiresAt, now - LATE_CHECK_AFTER_MS),
 					gt(invoiceTable.expiresAt, now - LATE_CHECK_MAX_AGE_MS)
@@ -217,11 +220,12 @@ export async function lateCheckExpired(db: DB, config: Config, now: number): Pro
 			try {
 				if (!(await claimLate(db, inv.id, now))) continue;
 				checked++;
+				const check = invoiceAdapters[inv.provider].check!;
 				let result: Awaited<ReturnType<typeof check>>;
 				try {
 					result = await check(ctx, { ...inv, lateCheckedAt: now });
 				} catch (err) {
-					await note(ctx, inv, 'late_check.failed', `The late payment check could not reach QPay (${errorName(err)}); it is not repeated. A callback is still honoured.`);
+					await note(ctx, inv, 'late_check.failed', `The late payment check could not reach the provider (${errorName(err)}); it is not repeated. A callback is still honoured.`);
 					continue;
 				}
 				if (!result.paid) continue;

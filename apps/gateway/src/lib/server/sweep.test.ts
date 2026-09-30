@@ -233,6 +233,25 @@ describe('lateCheckExpired', () => {
 		expect((await db.select().from(activity)).map((a) => a.kind)).toContain('late_check.paid');
 	});
 
+	it('asks Bonum once about a cancelled Bonum QR: it stays payable at Bonum until its own expiry', async () => {
+		resetBonumTokenCache();
+		const bonum = fakeBonum({
+			'POST /mpay-service/merchant/transaction/qr': () =>
+				jsonResponse({ status: 200, data: { invoice: { invoiceId: 5336, amount: 49_900.0, status: 'PAID' } } })
+		});
+		const qr = await seed({ provider: 'bonum', method: 'qr', qrText: '000201010212', providerInvoiceId: 'bonum-qr-1', expiresAt: EXPIRED_AT });
+		const checkout = await seed({ provider: 'bonum', providerInvoiceId: 'bonum-co-1', expiresAt: EXPIRED_AT });
+		await db.update(invoice).set({ status: 'cancelled' }).where(eq(invoice.id, qr));
+		await db.update(invoice).set({ status: 'cancelled' }).where(eq(invoice.id, checkout));
+
+		expect(await lateCheckExpired(db, config, DUE)).toBe(1);
+		expect(await row(qr)).toMatchObject({ status: 'paid', providerTransactionId: 'bonum-qr-1' });
+		// A hosted checkout has no status API: never asked, left as it ended.
+		expect((await row(checkout)).status).toBe('cancelled');
+		expect(bonum.count('POST /mpay-service/merchant/transaction/qr')).toBe(1);
+		expect(await lateCheckExpired(db, config, DUE + 60_000)).toBe(0);
+	});
+
 	it('checks each invoice at most once, and nothing else', async () => {
 		const id = await expired();
 		const paid = await seed({ expiresAt: EXPIRED_AT });
