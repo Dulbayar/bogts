@@ -1,0 +1,38 @@
+/**
+ * Toglii's deployment of Bogts: `wrangler.jsonc` plus our database, our
+ * domain, and nothing else. Deploy with `pnpm run deploy:toglii`.
+ *
+ * Kept beside the generic config rather than in it, as docs/self-hosting.md
+ * advises, so upstream changes to `wrangler.jsonc` merge without conflicts.
+ * When upstream changes that file, bring the same change here.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bogts",
+  "compatibility_date": "2026-09-08",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  "main": "src/worker.ts",
+  "alias": { "kit:worker": "./.svelte-kit/cloudflare/_worker.js" },
+  "assets": { "directory": ".svelte-kit/cloudflare", "binding": "ASSETS" },
+
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true },
+
+  // Only the custom domain. Cloudflare Access (if it is ever put in front of
+  // /admin) guards hostnames, so the workers.dev and preview addresses would
+  // be ways around it; Bogts refuses /admin there anyway, but they serve
+  // nothing we need.
+  "routes": [{ "pattern": "checkout.toglii.com", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bogts",
+      "database_id": "663524d6-1d37-44a6-9600-c142e0f6d046",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}

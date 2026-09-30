@@ -21,7 +21,8 @@
 		"test:watch": "vitest",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate:local": "wrangler d1 migrations apply DB --local",
-		"deploy": "vite build && wrangler d1 migrations apply DB --remote && wrangler deploy"
+		"deploy": "vite build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+		"deploy:toglii": "vite build && wrangler d1 migrations apply DB --remote -c wrangler.toglii.jsonc && wrangler deploy -c wrangler.toglii.jsonc"
 	},
 	"cloudflare": {
 		"bindings": {
