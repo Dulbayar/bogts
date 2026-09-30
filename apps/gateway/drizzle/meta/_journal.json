@@ -57,6 +57,13 @@
       "when": 1790359188584,
       "tag": "0007_branding",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790359188585,
+      "tag": "0008_invoice_method",
+      "breakpoints": true
     }
   ]
 }

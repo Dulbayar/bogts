@@ -23,16 +23,12 @@ import { toMnt } from '../../money';
 import { activity, type Deeplink, type Invoice } from '../../schema';
 import { nowOf, type ServiceContext } from '../../services/context';
 import type { InvoiceAdapter } from '../../services/invoice-adapter';
+import { deeplinks, qrImage, qrText } from '../../qr';
 import { QpayCallError, qpayCall } from './client';
 
-/** QPay's `qr_image` is a base64 PNG of about 10 KB; anything much larger is dropped. */
-export const MAX_QR_IMAGE_CHARS = 48 * 1024;
-const MAX_QR_TEXT_CHARS = 2048;
-const MAX_DEEPLINKS = 50;
+export { MAX_QR_IMAGE_CHARS } from '../../qr';
 /** QPay's invoice_description limit is not documented; 255 is what every client uses. */
 const MAX_DESCRIPTION = 255;
-
-const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 export function callbackUrl(origin: string, invoiceId: string): string {
 	return `${origin}/hooks/qpay/${encodeURIComponent(invoiceId)}`;
@@ -40,31 +36,6 @@ export function callbackUrl(origin: string, invoiceId: string): string {
 
 const str = (v: unknown, max: number): string | undefined =>
 	typeof v === 'string' && v.length > 0 && v.length <= max ? v : undefined;
-
-/** QPay's `urls[]`, checked rather than trusted. */
-function deeplinks(raw: unknown): Deeplink[] {
-	if (!Array.isArray(raw)) return [];
-	const out: Deeplink[] = [];
-	for (const item of raw.slice(0, MAX_DEEPLINKS)) {
-		if (!item || typeof item !== 'object') continue;
-		const r = item as Record<string, unknown>;
-		const name = str(r.name, 200);
-		const link = str(r.link, 4096);
-		if (!name || !link || /^\s*(javascript|data|vbscript):/i.test(link)) continue;
-		const d: Deeplink = { name, link };
-		const description = str(r.description, 200);
-		const logo = str(r.logo, 2048);
-		if (description) d.description = description;
-		if (logo && /^https:\/\//i.test(logo)) d.logo = logo;
-		out.push(d);
-	}
-	return out;
-}
-
-function qrImage(raw: unknown): string | null {
-	if (typeof raw !== 'string' || !raw || raw.length > MAX_QR_IMAGE_CHARS) return null;
-	return BASE64.test(raw) ? raw : null;
-}
 
 function disabled(): ApiError {
 	return new ApiError(400, 'provider_disabled', 'QPay is not enabled on this gateway');
@@ -187,7 +158,7 @@ export const qpayInvoiceAdapter: InvoiceAdapter = {
 		if (!providerInvoiceId) throw new QpayCallError(200, 'bad_response', 'invoice');
 		return {
 			providerInvoiceId,
-			qrText: str(data.qrText, MAX_QR_TEXT_CHARS) ?? null,
+			qrText: qrText(data.qrText),
 			qrImage: qrImage(data.qrImage),
 			deeplinks: deeplinks(data.urls)
 		};

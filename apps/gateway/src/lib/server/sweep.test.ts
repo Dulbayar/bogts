@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId } from './ids';
 import { resetQpayTokenCache } from './providers/qpay/client';
 import { fakeQpay, type FakeQpay } from './providers/qpay/fake';
-import { activity, event, invoice, ledger, type Provider } from './schema';
+import { activity, event, invoice, ledger, type InvoiceMethod, type Provider } from './schema';
+import { resetBonumTokenCache } from './providers/bonum/client';
+import { fakeBonum, jsonResponse } from './providers/bonum/testing';
 import {
 	BONUM_EXPIRY_GRACE_MS,
 	LATE_CHECK_AFTER_MS,
@@ -24,12 +26,25 @@ const config = testConfig();
 
 const NOW = Date.UTC(2026, 8, 25, 12, 10, 0);
 
-async function seed(opts: { provider?: Provider; expiresAt?: number; providerInvoiceId?: string | null; sweptAt?: number | null } = {}) {
+async function seed(
+	opts: {
+		provider?: Provider;
+		method?: InvoiceMethod;
+		qrText?: string;
+		expiresAt?: number;
+		providerInvoiceId?: string | null;
+		sweptAt?: number | null;
+	} = {}
+) {
 	const id = newId();
+	const provider = opts.provider ?? 'qpay';
 	await db.insert(invoice).values({
 		id,
 		projectId,
-		provider: opts.provider ?? 'qpay',
+		provider,
+		// As the API stores it: a QPay invoice is always a QR; Bonum's default is its checkout.
+		method: opts.method ?? (provider === 'qpay' ? 'qr' : 'checkout'),
+		qrText: opts.qrText ?? null,
 		amount: 49_900,
 		reference: 'order-1',
 		description: 'Pro',
@@ -124,6 +139,22 @@ describe('sweepExpired', () => {
 		expect(await sweepExpired(db, config, expiresAt + BONUM_EXPIRY_GRACE_MS)).toBe(1);
 		expect((await row(id)).status).toBe('expired');
 		expect(qpay.calls).toHaveLength(0);
+	});
+
+	it('checks a Bonum QR invoice once at its expiry, with no grace: its QR lookup is a production API', async () => {
+		resetBonumTokenCache();
+		const bonum = fakeBonum({
+			'POST /mpay-service/merchant/transaction/qr': () =>
+				jsonResponse({ status: 200, data: { invoice: { invoiceId: 5336, amount: 49_900.0, status: 'PAID' } } })
+		});
+		const id = await seed({ provider: 'bonum', method: 'qr', qrText: '000201010212', providerInvoiceId: 'bonum-qr-1' });
+		expect(await sweepExpired(db, config, NOW)).toBe(1);
+		const r = await row(id);
+		expect(r.status).toBe('paid');
+		expect(r.providerTransactionId).toBe('bonum-qr-1');
+		expect(bonum.count('POST /mpay-service/merchant/transaction/qr')).toBe(1);
+		expect(await sweepExpired(db, config, NOW + 60_000)).toBe(0);
+		expect(bonum.count('POST /mpay-service/merchant/transaction/qr')).toBe(1);
 	});
 
 	it('a Bonum PAYMENT webhook within the grace settles the pending invoice, and after it still settles', async () => {

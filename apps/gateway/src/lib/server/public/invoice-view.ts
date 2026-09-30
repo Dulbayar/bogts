@@ -15,6 +15,8 @@ const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 export type PublicInvoice = {
 	id: string;
 	provider: 'qpay' | 'bonum';
+	/** `qr`: this page shows the QR. `checkout`: the payer pays on the provider's own page. */
+	method: 'qr' | 'checkout';
 	projectName: string;
 	/** The project's own public brand (Settings → project → Public page), when set */
 	projectDisplayName: string | null;
@@ -118,6 +120,7 @@ export async function publicInvoice(db: DB, id: string, now = Date.now()): Promi
 	return {
 		id: inv.id,
 		provider: inv.provider,
+		method: inv.method,
 		projectName: row.projectName,
 		projectDisplayName: row.projectDisplayName?.trim() || null,
 		projectLogoUrl: logoUrl(row.projectLogoHash),

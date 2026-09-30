@@ -20,6 +20,14 @@ import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'driz
 export const PROVIDERS = ['bonum', 'qpay'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
+/**
+ * How an invoice is paid. `qr`: a QPay-format QR and bank-app links the
+ * project shows itself (every QPay invoice; a Bonum invoice made with
+ * `qr/create`). `checkout`: the provider's own hosted page (Bonum All-in-one).
+ */
+export const INVOICE_METHODS = ['checkout', 'qr'] as const;
+export type InvoiceMethod = (typeof INVOICE_METHODS)[number];
+
 export const PLAN_INTERVALS = ['weekly', 'monthly', 'yearly'] as const;
 export type PlanInterval = (typeof PLAN_INTERVALS)[number];
 
@@ -122,6 +130,8 @@ export const invoice = sqliteTable(
 			.notNull()
 			.references(() => project.id),
 		provider: text('provider', { enum: PROVIDERS }).notNull(),
+		/** How the payer pays: a QR the project shows, or the provider's hosted checkout */
+		method: text('method', { enum: INVOICE_METHODS }).notNull().default('checkout'),
 		amount: integer('amount').notNull(),
 		currency: text('currency', { enum: ['MNT'] })
 			.notNull()

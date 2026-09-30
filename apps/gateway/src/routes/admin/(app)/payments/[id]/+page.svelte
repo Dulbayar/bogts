@@ -84,7 +84,7 @@
 				{/if}
 			</dl>
 		</section>
-		{#if inv.status === 'pending' && inv.provider === 'qpay' && inv.hasQr}
+		{#if inv.status === 'pending' && inv.method === 'qr' && inv.hasQr}
 			<section class="card">
 				<header><h2>Checkout</h2></header>
 				<div class="body"><a href="/pay/{inv.id}" target="_blank" rel="noopener">Open checkout page ↗</a></div>

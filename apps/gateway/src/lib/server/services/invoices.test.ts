@@ -98,6 +98,43 @@ describe('openInvoice: a new invoice', () => {
 		expect(created).toMatchObject({ provider: 'bonum', status: 'pending', providerInvoiceId: 'bonum-inv-1', redirectUrl: 'https://ecommerce.bonum.mn/ecommerce?invoiceId=bonum-inv-1' });
 	});
 
+	it('stores the method: QPay is always a QR, Bonum a checkout unless it is asked for a QR', async () => {
+		const bonum = fakeBonum({
+			'POST /bonum-gateway/ecommerce/invoices': () =>
+				jsonResponse({ invoiceId: 'bonum-inv-1', followUpLink: 'https://ecommerce.bonum.mn/ecommerce?invoiceId=bonum-inv-1' }),
+			'POST /mpay-service/merchant/transaction/qr/create': () =>
+				jsonResponse({ status: 200, data: { invoiceId: 'bonum-qr-1', qrCode: '000201010212', qrImage: null, links: [] } })
+		});
+		const checkout = await newInvoice(ctx, { id: projectId }, { ...input, provider: 'bonum', reference: 'order-c' });
+		const qr = await newInvoice(ctx, { id: projectId }, { ...input, provider: 'bonum', method: 'qr', reference: 'order-q' });
+		expect(checkout.method).toBe('checkout');
+		expect(qr).toMatchObject({ method: 'qr', providerInvoiceId: 'bonum-qr-1', qrText: '000201010212', redirectUrl: null });
+		// A QR invoice is paid on our page, whichever provider made it.
+		expect(invoiceJson(qr, ctx.config)).toMatchObject({ method: 'qr', payUrl: `https://payments.test/pay/${qr.id}`, qr: { text: '000201010212' } });
+		expect(invoiceJson(checkout, ctx.config).payUrl).toBe('https://ecommerce.bonum.mn/ecommerce?invoiceId=bonum-inv-1');
+		expect(bonum.count('POST /mpay-service/merchant/transaction/qr/create')).toBe(1);
+
+		vi.stubGlobal('fetch', qpay.fetch);
+		expect((await newInvoice(ctx, { id: projectId }, input)).method).toBe('qr');
+		expect(await codeOf(newInvoice(ctx, { id: projectId }, { ...input, method: 'checkout', reference: 'order-x' }))).toBe('400 invalid_request');
+	});
+
+	it('never hands back a QR invoice to a request for the checkout: they are different purchases', async () => {
+		let n = 0;
+		fakeBonum({
+			'POST /bonum-gateway/ecommerce/invoices': () =>
+				jsonResponse({ invoiceId: `bonum-inv-${++n}`, followUpLink: 'https://ecommerce.bonum.mn/ecommerce?invoiceId=x' }),
+			'POST /mpay-service/merchant/transaction/qr/create': () =>
+				jsonResponse({ status: 200, data: { invoiceId: `bonum-qr-${++n}`, qrCode: '000201010212', links: [] } })
+		});
+		const qr = await openInvoice(ctx, { id: projectId }, { ...input, provider: 'bonum', method: 'qr' });
+		const checkout = await openInvoice(ctx, { id: projectId }, { ...input, provider: 'bonum' });
+		expect(checkout.reused).toBe(false);
+		expect(checkout.invoice.id).not.toBe(qr.invoice.id);
+		// While the same request for a QR still gets the pending one back.
+		expect((await openInvoice(ctx, { id: projectId }, { ...input, provider: 'bonum', method: 'qr' })).invoice.id).toBe(qr.invoice.id);
+	});
+
 	it('marks a Bonum invoice failed when Bonum refuses it', async () => {
 		fakeBonum({ 'POST /bonum-gateway/ecommerce/invoices': () => jsonResponse({ message: 'nope' }, 500) });
 		expect(await codeOf(newInvoice(ctx, { id: projectId }, { ...input, provider: 'bonum' }))).toBe('502 provider_error');

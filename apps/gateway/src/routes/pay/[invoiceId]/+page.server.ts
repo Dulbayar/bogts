@@ -6,8 +6,9 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ locals, params, setHeaders }) => {
 	setHeaders({ 'cache-control': 'no-store' });
 	const invoice = await publicInvoice(locals.db, params.invoiceId);
-	// The hosted QR page is for QPay invoices; Bonum invoices use Bonum's own checkout.
-	if (!invoice || invoice.provider !== 'qpay') error(404, { message: 'Payment not found', code: 'not_found' });
+	// The hosted page shows a QR (QPay, or Bonum's QR); a Bonum checkout is paid on Bonum's own page.
+	if (!invoice || invoice.method !== 'qr') error(404, { message: 'Payment not found', code: 'not_found' });
+	const environment = invoice.provider === 'qpay' ? locals.config?.qpay?.environment : locals.config?.bonum?.environment;
 	// The company branding came in the invoice query (no extra round trip).
-	return { invoice, brand: invoice.brand, payee: payeeOf(invoice, invoice.brand), sandbox: locals.config?.qpay?.environment === 'test' };
+	return { invoice, brand: invoice.brand, payee: payeeOf(invoice, invoice.brand), sandbox: environment === 'test' };
 };

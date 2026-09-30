@@ -4,7 +4,7 @@
  * Reuse (`openInvoice`), closing the other invoices once one is paid
  * (`cancelSiblings`) and the paid-twice flag (`settleInvoice`) all use this one
  * test. Two invoices are the same purchase only when the project, reference,
- * provider, amount, description, returnUrl and metadata ALL match (metadata as
+ * provider, method, amount, description, returnUrl and metadata ALL match (metadata as
  * canonical JSON, null equal to {}). A shared reference with different
  * contents is a different purchase: it is not reused, not cancelled, and not
  * flagged as paid twice.
@@ -12,7 +12,10 @@
 import { and, eq, isNull, type SQL } from 'drizzle-orm';
 import { invoice as invoiceTable, type Invoice, type Metadata } from '../schema';
 
-export type PurchaseFields = Pick<Invoice, 'projectId' | 'reference' | 'provider' | 'amount' | 'description' | 'returnUrl' | 'metadata'>;
+export type PurchaseFields = Pick<
+	Invoice,
+	'projectId' | 'reference' | 'provider' | 'method' | 'amount' | 'description' | 'returnUrl' | 'metadata'
+>;
 
 /** Metadata as JSON with sorted keys; null and {} are the same. */
 export function canonicalMetadata(m: Metadata | null | undefined): string {
@@ -25,6 +28,7 @@ export function samePurchase(a: PurchaseFields, b: PurchaseFields): boolean {
 		a.projectId === b.projectId &&
 		a.reference === b.reference &&
 		a.provider === b.provider &&
+		a.method === b.method &&
 		a.amount === b.amount &&
 		a.description === b.description &&
 		(a.returnUrl ?? null) === (b.returnUrl ?? null) &&
@@ -41,6 +45,7 @@ export function purchaseWhere(p: PurchaseFields): SQL {
 		eq(invoiceTable.projectId, p.projectId),
 		eq(invoiceTable.reference, p.reference),
 		eq(invoiceTable.provider, p.provider),
+		eq(invoiceTable.method, p.method),
 		eq(invoiceTable.amount, p.amount),
 		eq(invoiceTable.description, p.description),
 		p.returnUrl == null ? isNull(invoiceTable.returnUrl) : eq(invoiceTable.returnUrl, p.returnUrl)

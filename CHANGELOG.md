@@ -22,6 +22,14 @@ change the API; the notes will say how to upgrade.
 
 ### Added
 
+- **Bonum QR invoices**: `POST /v1/invoices` takes `method: "qr"` with
+  `provider: "bonum"` for a QPay-format QR made through Bonum
+  (`transaction/qr/create`): the same `qr` and `deeplinks` as a QPay invoice,
+  and our hosted page at `payUrl`. It is checked once at expiry through Bonum's
+  QR lookup, a production endpoint, so it needs no grace period. Invoices carry
+  a new `method` (`qr` or `checkout`); existing QPay invoices become `qr`
+  (migration `0008_invoice_method`), and a pending invoice is reused only for a
+  request with the same method.
 - **Favicon on public pages**: `/pay`, `/return` and the public error pages
   use the payee's logo, else the company logo, else the Bogts logo (always the
   Bogts logo, with an amber dot, in sandbox).

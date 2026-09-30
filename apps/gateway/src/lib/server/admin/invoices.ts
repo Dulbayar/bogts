@@ -153,6 +153,7 @@ export async function getInvoiceDetail(db: DB, id: string) {
 		invoice: {
 			id: inv.id,
 			provider: inv.provider,
+			method: inv.method,
 			amount: inv.amount,
 			status: inv.status,
 			reference: inv.reference,

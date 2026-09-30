@@ -3,16 +3,16 @@
  * past `expires_at` is checked EXACTLY ONCE (docs/design.md).
  *
  * 1. Select up to 100 pending invoices past their expiry and with
- *    `swept_at IS NULL`, oldest expiry first. A provider with a status API
- *    (QPay) is due at `expires_at`; one without (Bonum hosted invoices) only
- *    at `expires_at + BONUM_EXPIRY_GRACE_MS`, so Bonum's webhook retries can
- *    still land first.
+ *    `swept_at IS NULL`, oldest expiry first. A QR invoice whose provider has
+ *    a status API (QPay; Bonum QR) is due at `expires_at`; anything else
+ *    (Bonum hosted checkout) only at `expires_at + BONUM_EXPIRY_GRACE_MS`, so
+ *    Bonum's webhook retries can still land first.
  * 2. Claim each with a conditional `UPDATE … SET swept_at = now WHERE swept_at
  *    IS NULL AND status = 'pending'`. Only the run that changed the row goes
  *    on, so two overlapping cron runs never check the same invoice.
- * 3. A provider with a status API (QPay) is asked once: paid → `settleInvoice`
- *    (`invoice.paid`); otherwise `invoice.expired`. A provider without one
- *    (Bonum: its status endpoint is test-only) is expired locally.
+ * 3. A QR invoice with a status API (QPay; Bonum's QR lookup) is asked once:
+ *    paid → `settleInvoice` (`invoice.paid`); otherwise `invoice.expired`. A
+ *    Bonum hosted checkout (its status endpoint is test-only) is expired locally.
  * 4. A provider error during the check still counts as the one check: the
  *    invoice is expired and `sweep.check_failed` is recorded. Money that arrives
  *    later (a QPay callback, a Bonum PAYMENT webhook) is still honoured by
@@ -31,7 +31,7 @@
  *
  * Imported from the Worker entry through `cron.ts`: relative imports only.
  */
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, notInArray, or } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, not, or } from 'drizzle-orm';
 import { recordActivity } from './activity';
 import type { DB } from './db';
 import type { Config } from './env';
@@ -57,8 +57,16 @@ export const LATE_CHECK_AFTER_MS = 24 * 60 * 60 * 1000;
 export const LATE_CHECK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const LATE_CHECK_BATCH = 100;
 
-/** Providers whose invoices are expired locally (no status API), after the grace. */
-const localExpiry = () => PROVIDERS.filter((p) => !invoiceAdapters[p].check);
+/** Providers with a status check. */
+const checkingProviders = () => PROVIDERS.filter((p) => invoiceAdapters[p].check);
+
+/**
+ * Invoices the sweep asks about at expiry: QR invoices of a provider that can
+ * check one. Everything else — a Bonum hosted checkout, which has no status
+ * API — is expired locally, after the grace, so a late webhook lands first.
+ * Per invoice, not per provider: Bonum answers for its QR invoices only.
+ */
+const checkedAtExpiry = () => and(eq(invoiceTable.method, 'qr'), inArray(invoiceTable.provider, checkingProviders()))!;
 
 const errorName = (err: unknown) => (err instanceof Error ? err.name : typeof err);
 
@@ -87,7 +95,7 @@ async function claim(db: DB, id: string, now: number): Promise<boolean> {
 /** The one check of one claimed invoice. */
 async function sweepOne(ctx: ServiceContext, inv: Invoice): Promise<void> {
 	const check = invoiceAdapters[inv.provider].check;
-	if (check && inv.providerInvoiceId) {
+	if (check && inv.method === 'qr' && inv.providerInvoiceId) {
 		let result: Awaited<ReturnType<typeof check>> | null = null;
 		try {
 			result = await check(ctx, inv);
@@ -125,8 +133,8 @@ export async function sweepExpired(db: DB, config: Config, now: number): Promise
 					eq(invoiceTable.status, 'pending'),
 					isNull(invoiceTable.sweptAt),
 					or(
-						and(notInArray(invoiceTable.provider, localExpiry()), lte(invoiceTable.expiresAt, now)),
-						and(inArray(invoiceTable.provider, localExpiry()), lte(invoiceTable.expiresAt, now - BONUM_EXPIRY_GRACE_MS))
+						and(checkedAtExpiry(), lte(invoiceTable.expiresAt, now)),
+						and(not(checkedAtExpiry()), lte(invoiceTable.expiresAt, now - BONUM_EXPIRY_GRACE_MS))
 					)
 				)
 			)

@@ -26,6 +26,8 @@ See [self-hosting → Bonum setup](../self-hosting.md#bonum-setup). In short:
 |---|---|
 | Access token | `auth/create`, then `auth/refresh`. The token is cached in memory, then in D1 (encrypted), and shared by every isolate. `auth/create` is rate limited, so it is called only when there is no usable token. |
 | Hosted invoice (`POST /v1/invoices`, `provider: "bonum"`) | Create Invoice (All-in-one): Bonum's checkout page with QPay, card, WeChat and SonoShop. The result arrives as a `PAYMENT` webhook. |
+| QR invoice (`POST /v1/invoices`, `provider: "bonum"`, `method: "qr"`) | QR Code Create (`transaction/qr/create`): a QPay-format QR, its PNG and bank-app links, shown by the project or on our hosted page, as with a QPay invoice. `transactionId` is our invoice id, so the `PAYMENT` webhook finds it. |
+| QR expiry check (sweep) | QR Invoice (`transaction/qr`, by QR code): the invoice's `status` and `amount`. A production endpoint, unlike Get Invoice Status, so a QR invoice is checked once at its expiry instead of waiting out the grace. |
 | Subscription (`POST /v1/subscriptions`) | Create Card Token with a subscription (`payNow: true`), after checking the plan against List Of Payment Plans. The customer enters the card on Bonum's page. |
 | Card replacement (`POST /v1/subscriptions/:id/card`) | Change Subscription Token (Create New Token) |
 | Cancel (`DELETE /v1/subscriptions/:id`) | Delete Subscription (`/delete`) **with `planId`**. Plain unsubscribe would still take the next payment. |
@@ -39,7 +41,22 @@ Subscription Payment) are never called in production. The expiry sweep marks
 an unpaid Bonum invoice expired locally, because Bonum has no production
 status endpoint, and only **2 hours after `expiresAt`**, so a `PAYMENT`
 webhook Bonum is still retrying lands first. One that lands later still
-settles the invoice.
+settles the invoice. That is the hosted checkout.
+
+A **QR invoice** is different: the QR lookup is a production endpoint, so the
+sweep asks it once, at `expiresAt`, and settles a `PAID` answer (after the same
+amount check as a webhook). The payment is recorded under the id `qr/create`
+returned, never the lookup's own numeric `invoiceId`, so the check and a late
+`PAYMENT` webhook are one ledger row.
+
+What the sandbox showed for QR invoices (2026-09-30, shared terminal
+17171119): `qr/create` answers `{ data: { invoiceId, qrCode, qrImage, links[] } }`
+with a 241-character QPay QR, a PNG of about 10 KB and 24 bank links in QPay's
+`urls[]` shape (plus `appStoreId`, `androidPackageName`). The lookup answers
+`{ data: { merchant, invoice: { invoiceId (numeric), amount, status: "OPEN", … } } }`.
+**Still to confirm on a terminal of your own:** the webhook a paid QR sends
+(expected: `PAYMENT` with our `transactionId`), and the lookup's status word
+for a paid QR (Bogts accepts `PAID`).
 
 **Time zone.** Bonum's timestamps (`completedAt`, `nextBillingDate`,
 `lastBilledAt`, …) carry no zone and are Ulaanbaatar time (UTC+8). The docs

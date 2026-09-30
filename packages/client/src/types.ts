@@ -7,6 +7,8 @@
 export type IsoDate = string;
 
 export type Provider = 'qpay' | 'bonum';
+/** `qr`: a QR and bank-app links you show (QPay; Bonum's QR). `checkout`: the provider's hosted page (Bonum). */
+export type InvoiceMethod = 'qr' | 'checkout';
 export type Currency = 'MNT';
 export type Metadata = Record<string, string>;
 
@@ -23,7 +25,7 @@ export interface List<T> {
 
 export type InvoiceStatus = 'pending' | 'paid' | 'expired' | 'failed' | 'cancelled';
 
-/** A bank app link on a QPay invoice. */
+/** A bank app link on a QR invoice. */
 export interface Deeplink {
 	name: string;
 	description?: string;
@@ -35,15 +37,16 @@ export interface Invoice {
 	id: string;
 	object: 'invoice';
 	provider: Provider;
+	method: InvoiceMethod;
 	status: InvoiceStatus;
 	amount: number;
 	currency: Currency;
 	reference: string;
 	description: string;
-	/** Our hosted page for QPay, Bonum's checkout for Bonum */
+	/** Our hosted QR page for a `qr` invoice, Bonum's checkout for a `checkout` one */
 	payUrl: string | null;
 	redirectUrl: string | null;
-	/** QPay only: the QR text and image (base64 PNG) */
+	/** `qr` invoices only: the QR text and image (base64 PNG) */
 	qr: { text: string; image: string | null } | null;
 	deeplinks: Deeplink[];
 	returnUrl: string | null;
@@ -55,6 +58,8 @@ export interface Invoice {
 
 export interface CreateInvoiceInput {
 	provider: Provider;
+	/** QPay: `qr` only (the default). Bonum: `checkout` (the default) or `qr`. */
+	method?: InvoiceMethod;
 	/** Integer MNT */
 	amount: number;
 	reference: string;
@@ -65,8 +70,8 @@ export interface CreateInvoiceInput {
 	metadata?: Metadata;
 	/**
 	 * Default true: if the project already has a pending, unexpired invoice for
-	 * the same purchase (the same reference, provider, amount, description,
-	 * returnUrl and metadata), that invoice is returned (HTTP 200, `reused:
+	 * the same purchase (the same reference, provider, method, amount,
+	 * description, returnUrl and metadata), that invoice is returned (HTTP 200, `reused:
 	 * true`) instead of a new one (201). false always creates a new invoice.
 	 * A reference should identify exactly one purchase (an order id).
 	 */

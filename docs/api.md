@@ -108,6 +108,7 @@ SonoShop on Bonum's page.
   "id": "01K5X9M3QF2ZB7N8R4T6VWXY0C",
   "object": "invoice",
   "provider": "qpay",
+  "method": "qr",
   "status": "pending",
   "amount": 49900,
   "currency": "MNT",
@@ -129,13 +130,14 @@ SonoShop on Bonum's page.
 
 | Field | |
 |---|---|
-| `status` | `pending`, `paid`, `expired`, `failed` or `cancelled`. Only `pending` can change, except that money arriving late still turns an `expired` or `cancelled` invoice into `paid`. When one invoice is paid, the project's other pending invoices for the same purchase (identical `reference`, `provider`, `amount`, `description`, `returnUrl` and `metadata`) become `cancelled` (with no event); a QPay one only once QPay confirms the cancel, else it stays `pending` until its expiry check. |
-| `payUrl` | Where to send the payer. For QPay it is Bogts' hosted page `/pay/:id`, and for Bonum it is Bonum's checkout. |
-| `redirectUrl` | Bonum's checkout URL, and `null` for QPay. |
-| `qr` | QPay only. `text` is the QR payload and `image` is a base64 PNG (it may be `null`). |
-| `deeplinks` | QPay only. One entry per bank app. |
+| `method` | `qr`: a QR and bank-app links you can show yourself (every QPay invoice, and a Bonum invoice asked for one). `checkout`: Bonum's hosted checkout. |
+| `status` | `pending`, `paid`, `expired`, `failed` or `cancelled`. Only `pending` can change, except that money arriving late still turns an `expired` or `cancelled` invoice into `paid`. When one invoice is paid, the project's other pending invoices for the same purchase (identical `reference`, `provider`, `method`, `amount`, `description`, `returnUrl` and `metadata`) become `cancelled` (with no event); a QPay one only once QPay confirms the cancel, else it stays `pending` until its expiry check. |
+| `payUrl` | Where to send the payer. For a `qr` invoice it is Bogts' hosted page `/pay/:id`, and for a Bonum `checkout` it is Bonum's checkout. |
+| `redirectUrl` | Bonum's checkout URL for a `checkout` invoice, and `null` for a `qr` one. |
+| `qr` | `qr` invoices only. `text` is the QR payload and `image` is a base64 PNG (it may be `null`). |
+| `deeplinks` | `qr` invoices only. One entry per bank app. |
 | `returnUrl` | Where the payer is sent after paying. |
-| `expiresAt` | After this, the expiry sweep (every 10 minutes) checks a QPay invoice once and settles it as `paid` or `expired`, and asks QPay once more about 24 hours later (also for a `cancelled` QPay invoice) in case a payment arrived with its callback lost. A Bonum invoice stays `pending` for 2 more hours (Bonum's webhook retries can land), then becomes `expired`. |
+| `expiresAt` | After this, the expiry sweep (every 10 minutes) checks a QPay invoice once and settles it as `paid` or `expired`, and asks QPay once more about 24 hours later (also for a `cancelled` QPay invoice) in case a payment arrived with its callback lost. A Bonum `qr` invoice is checked once at `expiresAt` too, through Bonum's QR lookup. A Bonum `checkout` invoice stays `pending` for 2 more hours (Bonum's webhook retries can land), then becomes `expired`. |
 
 ### Create an invoice
 
@@ -164,6 +166,7 @@ result of `invoices.create`.
 | Field | Type | |
 |---|---|---|
 | `provider` | `"qpay"` or `"bonum"` | required |
+| `method` | `"qr"` or `"checkout"` | optional. QPay: `qr` only, the default. Bonum: `checkout` (its hosted page) by default, or `qr` for a QPay-format QR made through Bonum, used exactly like a QPay invoice. |
 | `amount` | integer MNT, at least 1 | required |
 | `reference` | string, 1 to 255 characters | required. Your own id, such as an order number. It comes back in every event. |
 | `description` | string, 1 to 255 characters | required. The payer sees it. |

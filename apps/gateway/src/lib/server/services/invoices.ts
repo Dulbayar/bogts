@@ -18,11 +18,13 @@ import { MAX_AMOUNT } from '../money';
 import { QpayCallError } from '../providers/qpay/client';
 import { newId } from '../ids';
 import {
+	INVOICE_METHODS,
 	INVOICE_STATUSES,
 	PROVIDERS,
 	invoice as invoiceTable,
 	type Deeplink,
 	type Invoice,
+	type InvoiceMethod,
 	type Metadata,
 	type Project,
 	type Provider
@@ -49,6 +51,8 @@ const metadataSchema = z
 /** `POST /v1/invoices` body (docs/contracts.md). */
 export const createInvoiceSchema = z.object({
 	provider: z.enum(PROVIDERS),
+	/** `qr` (QPay's only way; Bonum through `qr/create`) or `checkout` (Bonum's hosted page, its default) */
+	method: z.enum(INVOICE_METHODS).optional(),
 	amount: z.number().int().min(1).max(MAX_AMOUNT),
 	reference: z.string().trim().min(1).max(255),
 	description: z.string().trim().min(1).max(255),
@@ -59,6 +63,23 @@ export const createInvoiceSchema = z.object({
 	reuse: z.boolean().default(true)
 });
 export type CreateInvoiceInput = z.input<typeof createInvoiceSchema>;
+
+/** A parsed request with its method settled. */
+type CreateInvoiceData = z.output<typeof createInvoiceSchema> & { method: InvoiceMethod };
+
+/**
+ * The method an invoice is made with. QPay has only one way to pay, its QR;
+ * Bonum defaults to its hosted checkout and makes a QR when asked.
+ */
+function methodOf(data: z.output<typeof createInvoiceSchema>): InvoiceMethod {
+	if (data.provider === 'qpay') {
+		if (data.method === 'checkout') {
+			throw new ApiError(400, 'invalid_request', 'method: QPay invoices are paid by QR; "checkout" is Bonum only');
+		}
+		return 'qr';
+	}
+	return data.method ?? 'checkout';
+}
 
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
@@ -75,6 +96,7 @@ export type InvoiceJson = {
 	id: string;
 	object: 'invoice';
 	provider: Provider;
+	method: InvoiceMethod;
 	status: Invoice['status'];
 	amount: number;
 	currency: 'MNT';
@@ -96,7 +118,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 /** The public Invoice shape. */
 export function invoiceJson(inv: Invoice, config: Config): InvoiceJson {
 	const payUrl =
-		inv.provider === 'qpay'
+		inv.method === 'qr'
 			? config.publicOrigin
 				? `${config.publicOrigin}/pay/${inv.id}`
 				: null
@@ -105,6 +127,7 @@ export function invoiceJson(inv: Invoice, config: Config): InvoiceJson {
 		id: inv.id,
 		object: 'invoice',
 		provider: inv.provider,
+		method: inv.method,
 		status: inv.status,
 		amount: inv.amount,
 		currency: 'MNT',
@@ -149,11 +172,12 @@ const REUSE_CANDIDATES = 20;
  * QR, not a second invoice the payer might also pay. Only an invoice the
  * provider accepted (it has a provider id) is reused; the newest wins.
  */
-async function reusable(ctx: ServiceContext, projectId: string, data: z.output<typeof createInvoiceSchema>) {
+async function reusable(ctx: ServiceContext, projectId: string, data: CreateInvoiceData) {
 	const wanted: PurchaseFields = {
 		projectId,
 		reference: data.reference,
 		provider: data.provider,
+		method: data.method,
 		amount: data.amount,
 		description: data.description,
 		returnUrl: data.returnUrl ?? null,
@@ -189,7 +213,7 @@ export async function openInvoice(
 ): Promise<{ invoice: Invoice; reused: boolean }> {
 	const parsed = createInvoiceSchema.safeParse(input);
 	if (!parsed.success) throw new ApiError(400, 'invalid_request', describeZodError(parsed.error));
-	const data = parsed.data;
+	const data = { ...parsed.data, method: methodOf(parsed.data) };
 	if (!ctx.config.providers[data.provider]) {
 		throw new ApiError(400, 'provider_disabled', `${data.provider === 'qpay' ? 'QPay' : 'Bonum'} is not enabled on this gateway`);
 	}
@@ -203,7 +227,7 @@ export async function openInvoice(
 async function insertAndCreate(
 	ctx: ServiceContext,
 	project: Pick<Project, 'id'>,
-	data: z.output<typeof createInvoiceSchema>
+	data: CreateInvoiceData
 ): Promise<Invoice> {
 	const now = nowOf(ctx);
 	const id = newId();
@@ -213,6 +237,7 @@ async function insertAndCreate(
 			id,
 			projectId: project.id,
 			provider: data.provider,
+			method: data.method,
 			amount: data.amount,
 			reference: data.reference,
 			description: data.description,
